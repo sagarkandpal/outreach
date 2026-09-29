@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Botza Outreach Tracker</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Botza Outreach</h1>
+  <nav id="tabs">
+    <button data-tab="today" class="active">📋 Aaj ka kaam <span id="todayCount" class="badge">0</span></button>
+    <button data-tab="colleges">🏫 Saare colleges</button>
+    <button data-tab="replied">💬 Reply aaye <span id="repliedCount" class="badge grey">0</span></button>
+    <button data-tab="add">➕ College add karo</button>
+    <button data-tab="settings">⚙️ Settings</button>
+  </nav>
+  <div id="searchBox"><input id="q" type="search" placeholder="🔍 Email, LinkedIn link, naam ya college dhundo..." autocomplete="off"><div id="results" hidden></div></div>
+</header>
+<main id="view"></main>
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

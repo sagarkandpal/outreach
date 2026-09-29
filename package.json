@@ -1,0 +1,13 @@
+{
+  "name": "botza-tracker",
+  "version": "1.0.0",
+  "description": "Botza college outreach tracker (local MongoDB)",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "mongoose": "^9.10.2"
+  }
+}
