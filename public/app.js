@@ -442,4 +442,12 @@ async function renderSettings() {
 })();
 
 
+// DB indicator in footer (so both users can confirm they see the same database)
+fetch('/api/health').then((r) => r.json()).then((h) => {
+  const el = document.createElement('div');
+  el.style.cssText = 'text-align:center;color:#9ca3af;font-size:12px;padding:16px';
+  el.textContent = 'DB: ' + h.db + ' @ ' + h.host + ' · ' + h.colleges + ' colleges, ' + h.contacts + ' contacts' + (h.cloud ? '' : ' · LOCAL DB (shared nahi)');
+  document.body.appendChild(el);
+}).catch(() => {});
+
 render();
