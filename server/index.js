@@ -1,4 +1,5 @@
 const path = require('path');
+try { process.loadEnvFile(path.join(__dirname, '..', '.env')); } catch { /* no .env: use defaults */ }
 const express = require('express');
 const mongoose = require('mongoose');
 const routes = require('./routes');
