@@ -107,3 +107,4 @@ button.link:hover { text-decoration: underline; }
 .bigbtn:hover { background: #15803d; }
 @media (max-width: 700px) { .cards { grid-template-columns: 1fr; } .task { flex-wrap: wrap; } .bigbtn { width: 100%; } }
 .steps { padding-left: 20px; line-height: 1.9; margin: 0 0 12px; }
+.copyicon { font-size: 15px; padding: 0 4px; vertical-align: baseline; }

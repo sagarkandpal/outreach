@@ -154,6 +154,7 @@ async function renderToday() {
               <div class="task ${t.state}">
                 <div class="task-main">
                   <div class="task-title">${t.channel === 'email' ? '📧 Email' : '💼 LinkedIn'} · ${esc(t.stepLabel)}
+                    ${t.channel === 'linkedin' ? `<button class="link copyicon" data-msg="${t.contactId}" title="Is step ka message copy karo">📋</button>` : ''}
                     ${t.state === 'overdue' ? `<span class="tag overdue">${t.daysLate} din late</span>` : `<span class="tag due">Aaj</span>`}</div>
                   <div class="task-reach">${t.channel === 'email'
                     ? (t.email ? `${esc(t.email)} <button class="link" data-copy="${esc(t.email)}">Copy</button>` : '<span class="muted">email nahi hai</span>')
@@ -174,6 +175,12 @@ async function renderToday() {
       await api('POST', `/contacts/${b.dataset.reply}/status`, { status: 'handling_personally', note });
       toast('Follow-ups band'); render();
     }));
+    box.querySelectorAll('[data-msg]').forEach((b) => b.onclick = () => {
+      const t = items.find((x) => x.contactId === b.dataset.msg && x.channel === 'linkedin');
+      if (!t || !t.message) return toast('Settings me is step ka LinkedIn draft nahi hai');
+      navigator.clipboard.writeText(t.message);
+      toast(`${t.stepLabel} copied ✓`);
+    });
     box.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => { navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); });
   };
   document.getElementById('fChannel').onchange = draw;
@@ -410,10 +417,15 @@ async function renderSettings() {
     email: { first: settings.emailSteps[0], gaps: settings.emailSteps.slice(1).map((s) => s.gapDays) },
     linkedin: { first: settings.linkedinSteps[0], gaps: settings.linkedinSteps.slice(1).map((s) => s.gapDays) },
   };
-  // email drafts, index 0 = primary, then follow-ups (used by "Prompt for all emails")
-  const drafts = settings.emailSteps.map((s) => s.draft || '');
+  // drafts per channel, index 0 = primary/connection note, then follow-ups
+  // (email: "Prompt for all emails"; linkedin: 📋 copy icon in Aaj ka kaam)
+  const drafts = {
+    email: settings.emailSteps.map((s) => s.draft || ''),
+    linkedin: settings.linkedinSteps.map((s) => s.draft || ''),
+  };
   const titles = { email: '📧 Email', linkedin: '💼 LinkedIn' };
   const firstNames = { email: 'Primary Email', linkedin: 'Connection Note' };
+  let importNote = ''; // result of the last import, shown in the import box
 
   function draw() {
     view.innerHTML = `<div class="card"><h2>Follow-up settings</h2>
@@ -433,30 +445,68 @@ async function renderSettings() {
               <input type="number" min="0" data-gap="${ch}" data-i="${i}" value="${g}" style="width:64px"> <span class="muted">din baad</span></div>`).join('')}
           </div>`).join('')}
       </div>
+      <div class="help" style="margin-top:20px"><b>📄 PDF / document se drafts import karo</b>
+        <ol class="steps" style="margin:6px 0">
+          <li><button class="btn small" id="copyImportPrompt">Claude ke liye prompt copy karo</button> — Claude me apna PDF attach karke ye prompt paste karo, wo document ko sahi format me restructure kar dega.</li>
+          <li>Claude ka output (ya uska PDF/.txt) yahan do: <input type="file" id="importFile" accept=".pdf,.txt,.md,text/plain,application/pdf"> ya text paste karo:</li>
+        </ol>
+        <textarea id="importText" placeholder="### EMAIL | Primary Email&#10;Subject: ...&#10;&#10;Hi {first_name}, ...&#10;&#10;### LINKEDIN | Connection Note&#10;..." style="min-height:70px"></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn primary" id="runImport">Drafts bharo (preview)</button>
+          <span class="muted">Sirf neeche ke boxes bharenge, Save dabane par hi save hoga.</span></div>
+        ${importNote ? `<p>${importNote}</p>` : ''}
+      </div>
       <h3>✍️ Email drafts</h3>
       <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{college}</code>. "Prompt for all emails" isi draft ko Claude ko dega.</p>
-      ${drafts.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.email : 'Follow-up ' + i}</b>
-        <textarea data-draft="${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
+      ${drafts.email.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.email : 'Follow-up ' + i}</b>
+        <textarea data-draft="email:${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
+      <h3>💼 LinkedIn drafts</h3>
+      <p class="muted">Har step ka message yahan paste karo. Placeholders: <code>{first_name}</code>, <code>{college}</code>. Aaj ka kaam me LinkedIn task par 📋 dabane se ye copy hoga.</p>
+      ${drafts.linkedin.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.linkedin : 'Follow-up ' + i}</b>
+        <textarea data-draft="linkedin:${i}" placeholder="Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
       <br><button class="btn primary" id="saveSettings">Save</button></div>`;
 
     const setCount = (ch, n) => {
       n = Math.max(0, Math.min(15, Number(n) || 0));
       while (draft[ch].gaps.length < n) draft[ch].gaps.push(2);
       draft[ch].gaps.length = n;
-      if (ch === 'email') { while (drafts.length < n + 1) drafts.push(''); drafts.length = n + 1; }
+      while (drafts[ch].length < n + 1) drafts[ch].push('');
+      drafts[ch].length = n + 1;
     };
     const sync = () => {
       view.querySelectorAll('[data-gap]').forEach((el) => (draft[el.dataset.gap].gaps[el.dataset.i] = Math.max(0, Number(el.value) || 0)));
-      view.querySelectorAll('[data-draft]').forEach((el) => (drafts[el.dataset.draft] = el.value));
+      view.querySelectorAll('[data-draft]').forEach((el) => {
+        const [ch, i] = el.dataset.draft.split(':');
+        drafts[ch][i] = el.value;
+      });
     };
     view.querySelectorAll('[data-inc]').forEach((b) => b.onclick = () => { sync(); setCount(b.dataset.inc, draft[b.dataset.inc].gaps.length + 1); draw(); });
     view.querySelectorAll('[data-dec]').forEach((b) => b.onclick = () => { sync(); setCount(b.dataset.dec, draft[b.dataset.dec].gaps.length - 1); draw(); });
     view.querySelectorAll('[data-count]').forEach((el) => el.onchange = () => { sync(); setCount(el.dataset.count, el.value); draw(); });
+    document.getElementById('copyImportPrompt').onclick = () => { navigator.clipboard.writeText(IMPORT_PROMPT); toast('Prompt copied'); };
+    document.getElementById('runImport').onclick = () => guard(async () => {
+      const file = document.getElementById('importFile').files[0];
+      let text = document.getElementById('importText').value;
+      if (file) text = /\.pdf$/i.test(file.name) || file.type === 'application/pdf' ? await pdfToText(file) : await file.text();
+      const r = parseDrafts(text);
+      sync();
+      if (r.count) {
+        for (const ch of ['email', 'linkedin']) {
+          const last = r[ch].length - 1;
+          if (last > draft[ch].gaps.length) setCount(ch, Math.min(last, 15)); // document has more follow-ups than settings
+          r[ch].forEach((d, i) => { if (d && i < drafts[ch].length) drafts[ch][i] = d; });
+        }
+      }
+      const done = ['email', 'linkedin'].map((ch) => `${r[ch].filter(Boolean).length} ${ch === 'email' ? 'email' : 'LinkedIn'}`).join(' + ');
+      importNote = (r.count ? `✅ ${done} draft neeche bhar diye. Check/edit karke <b>Save</b> dabao.<br>` : '')
+        + r.warnings.map((w) => `⚠️ ${esc(w)}`).join('<br>');
+      draw();
+      if (r.count) toast(`${r.count} drafts bhare — Save dabana mat bhulo`);
+    });
     document.getElementById('saveSettings').onclick = () => guard(async () => {
       sync();
       const build = (ch) => [
-        { label: firstNames[ch], gapDays: 0, ...(ch === 'email' && { draft: drafts[0] }) },
-        ...draft[ch].gaps.map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g, ...(ch === 'email' && { draft: drafts[i + 1] }) })),
+        { label: firstNames[ch], gapDays: 0, draft: drafts[ch][0] },
+        ...draft[ch].gaps.map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g, draft: drafts[ch][i + 1] })),
       ];
       await api('PUT', '/settings', { emailSteps: build('email'), linkedinSteps: build('linkedin') });
       toast('Saved'); render();

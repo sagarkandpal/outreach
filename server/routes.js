@@ -1,7 +1,7 @@
 const express = require('express');
 const { College, Contact, Settings, getSettings } = require('./models');
 const { decorate } = require('./due');
-const { buildEmailPrompt } = require('./prompt');
+const { buildEmailPrompt, firstName } = require('./prompt');
 
 const router = express.Router();
 const wrap = (fn) => (req, res) => fn(req, res).catch((e) => res.status(500).json({ error: e.message }));
@@ -134,10 +134,17 @@ async function buildToday(settings) {
     ]) {
       const i = cells.findIndex((x) => x.state === 'due' || x.state === 'overdue');
       if (i === -1) continue;
+      const college = cname[String(c.collegeId)] || '?';
+      // ready-to-paste text for channels without a connector (LinkedIn); email goes through the Claude prompt
+      const message = channel === 'linkedin'
+        ? String(steps[i].draft || '').trim()
+            .replace(/\{first_name\}/g, firstName(c.name))
+            .replace(/\{college\}/g, college.replace('[DEMO] ', ''))
+        : '';
       items.push({
-        contactId: c._id, college: cname[String(c.collegeId)] || '?', role: c.role, name: c.name,
+        contactId: c._id, college, role: c.role, name: c.name,
         email: c.email, linkedinUrl: c.linkedinUrl, channel, stepIndex: i, stepLabel: steps[i].label,
-        state: cells[i].state, daysLate: cells[i].days || 0, isFirst: i === 0,
+        state: cells[i].state, daysLate: cells[i].days || 0, isFirst: i === 0, message,
       });
     }
   }
