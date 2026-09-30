@@ -1,6 +1,7 @@
 const express = require('express');
 const { College, Contact, Settings, getSettings } = require('./models');
 const { decorate } = require('./due');
+const { buildEmailPrompt } = require('./prompt');
 
 const router = express.Router();
 const wrap = (fn) => (req, res) => fn(req, res).catch((e) => res.status(500).json({ error: e.message }));
@@ -120,8 +121,7 @@ router.post('/contacts/:id/status', wrap(async (req, res) => {
 }));
 
 // ---------- today ----------
-router.get('/today', wrap(async (req, res) => {
-  const settings = await getSettings();
+async function buildToday(settings) {
   const colleges = await College.find().lean();
   const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
   const contacts = await Contact.find({ status: 'active' }).lean();
@@ -143,7 +143,51 @@ router.get('/today', wrap(async (req, res) => {
   }
   // most overdue first, then follow-ups before fresh first touches
   items.sort((a, b) => b.daysLate - a.daysLate || Number(a.isFirst) - Number(b.isFirst) || a.college.localeCompare(b.college));
-  res.json(items);
+  return items;
+}
+
+router.get('/today', wrap(async (req, res) => res.json(await buildToday(await getSettings()))));
+
+// one structured prompt for Claude Desktop (Gmail) covering every email due today
+router.post('/prompt/emails', wrap(async (req, res) => {
+  const settings = await getSettings();
+  const { ready, ...out } = buildEmailPrompt(await buildToday(settings), settings.emailSteps);
+  res.json(out);
+}));
+
+// Claude's strict sent-report -> preview (apply:false) or mark sent (apply:true). Only "sent" entries that match a
+// task still due today are marked; everything else stays pending.
+const norm = (s) => String(s || '').trim().toLowerCase();
+router.post('/prompt/report', wrap(async (req, res) => {
+  const { report, apply } = req.body || {};
+  if (!Array.isArray(report)) return res.status(400).json({ error: 'Report ka format galat hai (report array chahiye)' });
+  const settings = await getSettings();
+  const { ready } = buildEmailPrompt(await buildToday(settings), settings.emailSteps);
+  const pool = [...ready]; // due email tasks that were in the prompt; each can be claimed once
+  const out = { willMark: [], failed: [], unmatched: [], missing: [], marked: 0 };
+  const label = (t) => ({ email: t.email, step: t.stepLabel, college: t.college.replace('[DEMO] ', ''), name: t.name });
+
+  for (const e of report) {
+    const idx = pool.findIndex((t) => norm(t.email) === norm(e && e.email) && norm(t.stepLabel) === norm(e && e.step));
+    if (idx === -1) { out.unmatched.push({ email: e && e.email, step: e && e.step, status: e && e.status }); continue; }
+    const t = pool.splice(idx, 1)[0];
+    if (norm(e.status) === 'sent') out.willMark.push({ ...label(t), contactId: t.contactId, stepIndex: t.stepIndex });
+    else out.failed.push({ ...label(t), note: String(e.note || '') });
+  }
+  out.missing = pool.map(label); // in the prompt but not in the report -> stay pending
+
+  if (apply) {
+    for (const w of out.willMark) {
+      const c = await Contact.findById(w.contactId);
+      // still the same next step? (guards against double-marking on re-apply)
+      if (!c || c.status !== 'active' || c.emailSent.length !== w.stepIndex) continue;
+      c.emailSent.push(new Date());
+      await c.save();
+      out.marked++;
+    }
+  }
+  out.willMark = out.willMark.map(({ contactId, stepIndex, ...rest }) => rest);
+  res.json(out);
 }));
 
 // ---------- replied list ----------

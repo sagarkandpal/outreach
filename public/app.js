@@ -71,7 +71,61 @@ async function renderToday() {
       </div>
     </div>
     <div class="help">💡 <b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Agla follow-up apne aap 2 din baad yahin aa jayega. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis college ka hai.</div>
+    <div class="row"><button class="btn primary" id="genPrompt">✨ Prompt for all emails</button>
+      <span class="muted">Aaj ke saare emails ka ek Claude prompt (Gmail wale Claude me paste karo)</span></div>
+    <div id="promptBox" class="card" hidden></div>
     <div id="todayCards"></div>`;
+
+  document.getElementById('genPrompt').onclick = () => guard(async () => {
+    const box = document.getElementById('promptBox');
+    const show = async () => {
+      const r = await api('POST', '/prompt/emails');
+      box.hidden = false;
+      const warn = [
+        r.missingDrafts.length ? `⚠️ Settings me in steps ka draft nahi hai: <b>${esc(r.missingDrafts.join(', '))}</b>` : '',
+        ...r.skipped.map((s) => `⚠️ Skip: ${esc(s)}`),
+      ].filter(Boolean).join('<br>');
+      box.innerHTML = r.count
+        ? `<h2>Claude prompt — ${r.count} email${r.count > 1 ? 's' : ''}</h2>
+           ${warn ? `<p>${warn}</p>` : ''}
+           <textarea id="promptText" readonly style="min-height:260px">${esc(r.prompt)}</textarea>
+           <div class="row" style="margin-top:8px"><button class="btn primary" id="copyPrompt">Copy prompt</button>
+             <button class="btn" id="closePrompt">Band karo</button></div>
+           <h3 style="margin-top:16px">Claude ka report paste karo</h3>
+           <p class="muted">Claude ke aakhri message ka json block yahan paste karo. Sirf jo "sent" honge unhe hi auto ✓ mark kiya jayega.</p>
+           <textarea id="reportText" placeholder='{"report":[...]}' style="min-height:100px"></textarea>
+           <div class="row" style="margin-top:8px"><button class="btn primary" id="checkReport">Check karo</button></div>
+           <div id="reportOut"></div>`
+        : `<h2>Koi email nahi bhejna</h2><p>${warn || 'Aaj koi email task nahi hai.'}</p><button class="btn" id="closePrompt">Band karo</button>`;
+      document.getElementById('closePrompt').onclick = () => { box.hidden = true; };
+      const cp = document.getElementById('copyPrompt');
+      if (cp) cp.onclick = () => { navigator.clipboard.writeText(document.getElementById('promptText').value); toast('Prompt copied'); };
+      const chk = document.getElementById('checkReport');
+      if (chk) chk.onclick = () => guard(async () => {
+        const text = document.getElementById('reportText').value;
+        const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        const raw = fence ? fence[1] : text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch { throw new Error('Report ka format galat hai (json parse nahi hua)'); }
+        const report = Array.isArray(parsed) ? parsed : parsed.report;
+        const p = await api('POST', '/prompt/report', { report });
+        const who = (x) => `${esc(x.college)} · ${esc(x.name || '—')} · ${esc(x.email)} · ${esc(x.step)}`;
+        const out = document.getElementById('reportOut');
+        out.innerHTML = `
+          ${p.willMark.length ? `<p><b>✅ Mark honge (${p.willMark.length}):</b><br>${p.willMark.map(who).join('<br>')}</p>` : '<p class="muted">Koi email mark hone layak nahi mila.</p>'}
+          ${p.failed.length ? `<p><b>❌ Failed (pending rahenge):</b><br>${p.failed.map((x) => `${who(x)}${x.note ? ' — ' + esc(x.note) : ''}`).join('<br>')}</p>` : ''}
+          ${p.missing.length ? `<p><b>⚠️ Report me nahi aaye (pending rahenge):</b><br>${p.missing.map(who).join('<br>')}</p>` : ''}
+          ${p.unmatched.length ? `<p><b>⚠️ Match nahi hue (ignore):</b><br>${p.unmatched.map((x) => `${esc(x.email)} · ${esc(x.step)} · ${esc(x.status)}`).join('<br>')}</p>` : ''}
+          ${p.willMark.length ? `<button class="btn primary" id="applyReport">${p.willMark.length} ko ✓ mark karo</button>` : ''}`;
+        const ap = document.getElementById('applyReport');
+        if (ap) ap.onclick = () => guard(async () => {
+          const r = await api('POST', '/prompt/report', { report, apply: true });
+          toast(`${r.marked} done ✓`); render();
+        });
+      });
+    };
+    await show();
+  });
 
   const draw = () => {
     const ch = document.getElementById('fChannel').value;
@@ -356,6 +410,8 @@ async function renderSettings() {
     email: { first: settings.emailSteps[0], gaps: settings.emailSteps.slice(1).map((s) => s.gapDays) },
     linkedin: { first: settings.linkedinSteps[0], gaps: settings.linkedinSteps.slice(1).map((s) => s.gapDays) },
   };
+  // email drafts, index 0 = primary, then follow-ups (used by "Prompt for all emails")
+  const drafts = settings.emailSteps.map((s) => s.draft || '');
   const titles = { email: '📧 Email', linkedin: '💼 LinkedIn' };
   const firstNames = { email: 'Primary Email', linkedin: 'Connection Note' };
 
@@ -377,22 +433,30 @@ async function renderSettings() {
               <input type="number" min="0" data-gap="${ch}" data-i="${i}" value="${g}" style="width:64px"> <span class="muted">din baad</span></div>`).join('')}
           </div>`).join('')}
       </div>
+      <h3>✍️ Email drafts</h3>
+      <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{college}</code>. "Prompt for all emails" isi draft ko Claude ko dega.</p>
+      ${drafts.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.email : 'Follow-up ' + i}</b>
+        <textarea data-draft="${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
       <br><button class="btn primary" id="saveSettings">Save</button></div>`;
 
     const setCount = (ch, n) => {
       n = Math.max(0, Math.min(15, Number(n) || 0));
       while (draft[ch].gaps.length < n) draft[ch].gaps.push(2);
       draft[ch].gaps.length = n;
+      if (ch === 'email') { while (drafts.length < n + 1) drafts.push(''); drafts.length = n + 1; }
     };
-    const sync = () => view.querySelectorAll('[data-gap]').forEach((el) => (draft[el.dataset.gap].gaps[el.dataset.i] = Math.max(0, Number(el.value) || 0)));
+    const sync = () => {
+      view.querySelectorAll('[data-gap]').forEach((el) => (draft[el.dataset.gap].gaps[el.dataset.i] = Math.max(0, Number(el.value) || 0)));
+      view.querySelectorAll('[data-draft]').forEach((el) => (drafts[el.dataset.draft] = el.value));
+    };
     view.querySelectorAll('[data-inc]').forEach((b) => b.onclick = () => { sync(); setCount(b.dataset.inc, draft[b.dataset.inc].gaps.length + 1); draw(); });
     view.querySelectorAll('[data-dec]').forEach((b) => b.onclick = () => { sync(); setCount(b.dataset.dec, draft[b.dataset.dec].gaps.length - 1); draw(); });
     view.querySelectorAll('[data-count]').forEach((el) => el.onchange = () => { sync(); setCount(el.dataset.count, el.value); draw(); });
     document.getElementById('saveSettings').onclick = () => guard(async () => {
       sync();
       const build = (ch) => [
-        { label: firstNames[ch], gapDays: 0 },
-        ...draft[ch].gaps.map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g })),
+        { label: firstNames[ch], gapDays: 0, ...(ch === 'email' && { draft: drafts[0] }) },
+        ...draft[ch].gaps.map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g, ...(ch === 'email' && { draft: drafts[i + 1] }) })),
       ];
       await api('PUT', '/settings', { emailSteps: build('email'), linkedinSteps: build('linkedin') });
       toast('Saved'); render();
