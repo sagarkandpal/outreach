@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const stepSchema = new mongoose.Schema(
-  { label: String, gapDays: { type: Number, default: 2 } },
+  { label: String, gapDays: { type: Number, default: 2 }, draft: { type: String, default: '' } },
   { _id: false }
 );
 
