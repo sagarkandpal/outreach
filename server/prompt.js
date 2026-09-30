@@ -8,7 +8,9 @@ function firstName(full) {
 }
 
 // items: output of /today (email items only are used). steps: settings.emailSteps
-function buildEmailPrompt(items, steps) {
+// senderName: replaces {sender_name} in drafts (optional; drafts without the placeholder are unaffected)
+function buildEmailPrompt(items, steps, senderName) {
+  const sender = String(senderName || '').trim();
   const emailItems = items.filter((i) => i.channel === 'email');
   const skipped = [];
   const ready = [];
@@ -16,19 +18,22 @@ function buildEmailPrompt(items, steps) {
     const draft = (steps[t.stepIndex] && steps[t.stepIndex].draft || '').trim();
     if (!t.email) skipped.push(`${t.college} / ${t.name || t.role}: email nahi hai`);
     else if (!draft) skipped.push(`${t.college} / ${t.name || t.role}: "${t.stepLabel}" ka draft Settings mein nahi hai`);
+    else if (/\{first_name\}/.test(draft) && !firstName(t.name)) skipped.push(`${t.college} / ${t.role}: contact ka naam nahi hai, draft mein {first_name} hai`);
     else ready.push(t);
   }
   const missingDrafts = [...new Set(emailItems.filter((t) => !(steps[t.stepIndex] && steps[t.stepIndex].draft || '').trim()).map((t) => t.stepLabel))];
 
   const usedSteps = [...new Set(ready.map((t) => t.stepIndex))].sort((a, b) => a - b);
-  const drafts = usedSteps.map((i) => `### ${steps[i].label}\n<<<DRAFT\n${steps[i].draft.trim()}\nDRAFT>>>`).join('\n\n');
-  const rows = ready.map((t, n) => `${n + 1} | ${t.college.replace('[DEMO] ', '')} | ${firstName(t.name)} | ${t.email} | ${t.stepLabel}`).join('\n');
+  const drafts = usedSteps.map((i) => `### ${steps[i].label}\n<<<DRAFT\n${steps[i].draft.trim().replace(/\{sender_name\}/g, () => sender)}\nDRAFT>>>`).join('\n\n');
+  const cell = (s) => String(s).replace(/\s*[|\r\n]+\s*/g, ' ');
+  const rows = ready.map((t, n) => `${n + 1} | ${cell(t.college.replace('[DEMO] ', ''))} | ${cell(firstName(t.name))} | ${t.email} | ${t.stepLabel}`).join('\n');
+  const senderRule = sender ? `\n- Draft mein sender (mera) naam "${sender}" hi rehna chahiye; use badalna mat.` : '';
 
   const prompt = ready.length ? `Tumhare paas mera Gmail connected hai. Neeche recipients ki list hai. Har recipient ko uske "Step" wala draft email bhejo.
 
 Rules:
 - Har recipient ko sirf uske Step ka draft bhejo (Primary ya Follow-up N). Kisi aur step ka draft mat bhejna.
-- Draft ke andar {first_name} ki jagah recipient ka First name, aur {college} ki jagah College ka naam daalo. Baaki draft ka text bilkul same rakho, kuch add/edit mat karo.
+- Draft ke andar {first_name} ki jagah recipient ka First name, aur {college} ki jagah College ka naam daalo. Baaki draft ka text bilkul same rakho, kuch add/edit mat karo.${senderRule}
 - Draft ki pehli line "Subject:" se shuru ho to wo email ka subject hai, baaki body hai.
 - Har email alag alag bhejo (koi CC/BCC ya group mail nahi).
 - Ambiguous kuch ho to guess mat karo; wo email mat bhejo aur report mein "failed" likho.

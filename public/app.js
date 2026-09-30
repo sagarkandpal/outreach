@@ -71,15 +71,20 @@ async function renderToday() {
       </div>
     </div>
     <div class="help">💡 <b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Agla follow-up apne aap 2 din baad yahin aa jayega. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis college ka hai.</div>
-    <div class="row"><button class="btn primary" id="genPrompt">✨ Prompt for all emails</button>
+    <div class="row"><label>Sender naam: <input id="senderName" style="width:140px" placeholder="Sagar"></label>
+      <button class="btn primary" id="genPrompt">✨ Prompt for all emails</button>
       <span class="muted">Aaj ke saare emails ka ek Claude prompt (Gmail wale Claude me paste karo)</span></div>
     <div id="promptBox" class="card" hidden></div>
     <div id="todayCards"></div>`;
 
+  const senderInput = document.getElementById('senderName');
+  try { senderInput.value = localStorage.getItem('senderName') || 'Sagar'; } catch { senderInput.value = 'Sagar'; }
   document.getElementById('genPrompt').onclick = () => guard(async () => {
     const box = document.getElementById('promptBox');
     const show = async () => {
-      const r = await api('POST', '/prompt/emails');
+      const senderName = senderInput.value.trim();
+      try { localStorage.setItem('senderName', senderName); } catch {}
+      const r = await api('POST', '/prompt/emails', { senderName });
       box.hidden = false;
       const warn = [
         r.missingDrafts.length ? `⚠️ Settings me in steps ka draft nahi hai: <b>${esc(r.missingDrafts.join(', '))}</b>` : '',
@@ -456,7 +461,7 @@ async function renderSettings() {
         ${importNote ? `<p>${importNote}</p>` : ''}
       </div>
       <h3>✍️ Email drafts</h3>
-      <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{college}</code>. "Prompt for all emails" isi draft ko Claude ko dega.</p>
+      <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{college}</code>, <code>{sender_name}</code> (Aaj ka kaam page ke "Sender naam" box se aata hai). "Prompt for all emails" isi draft ko Claude ko dega.</p>
       ${drafts.email.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.email : 'Follow-up ' + i}</b>
         <textarea data-draft="email:${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
       <h3>💼 LinkedIn drafts</h3>

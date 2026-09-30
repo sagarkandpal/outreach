@@ -158,7 +158,7 @@ router.get('/today', wrap(async (req, res) => res.json(await buildToday(await ge
 // one structured prompt for Claude Desktop (Gmail) covering every email due today
 router.post('/prompt/emails', wrap(async (req, res) => {
   const settings = await getSettings();
-  const { ready, ...out } = buildEmailPrompt(await buildToday(settings), settings.emailSteps);
+  const { ready, ...out } = buildEmailPrompt(await buildToday(settings), settings.emailSteps, req.body && req.body.senderName);
   res.json(out);
 }));
 
