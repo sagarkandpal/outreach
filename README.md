@@ -18,10 +18,11 @@ Server start hote hi terminal me ye line aani chahiye:
 - `LOCAL` likha aaye ya WARNING aaye -> `.env` nahi mili. `.env.example` ko copy karke `.env` banao aur MONGO_URI paste karo.
 - Page ke sabse neeche `DB: ... · N colleges, N contacts` dikhta hai. Dono logon ka same hona chahiye.
 
-## Prompt for all emails (Aaj ka kaam)
-1. Settings tab -> "Email drafts": har step (Primary, Follow-up 1, 2...) ka ready draft paste karo. Placeholders: `{first_name}`, `{college}`. Pehli line `Subject: ...` ho sakti hai.
-2. Aaj ka kaam -> **✨ Prompt for all emails** -> Copy -> Gmail-connected Claude Desktop me paste.
-3. Claude ke aakhri message ka `json` report block "Claude ka report paste karo" box mein paste karo -> **Check karo** -> **✓ mark karo**. Sirf jo `sent` hain wahi mark hote hain; failed / report me nahi aaye wale pending rehte hain.
+## College-wise email prompt (Aaj ka kaam)
+1. Settings tab -> "Email drafts": har step (Primary, Follow-up 1, 2...) ka ready draft paste karo. Placeholders: `{first_name}`, `{college}`. Pehli line `Subject: ...` ho sakti hai. Attachment wale step pe "📎 Attachment" likho (Claude sirf draft banayega).
+2. Aaj ka kaam -> college card pe **Sender naam** likho -> **📋 Prompt** (us college ke saare emails ka prompt copy hota hai) -> Gmail-connected Claude Desktop me paste.
+3. Claude ek table dega (Sent / Draft / Failed, draft links, kaunsa attachment lagana hai). Attachment wale drafts link se kholkar attach karke bhejo.
+4. Jo email gaye unke aage Aaj ka kaam me **✓ Bhej diya** khud dabao (auto-mark nahi hota).
 
 ## LinkedIn drafts
 Settings -> "LinkedIn drafts" me har step ka message paste karo. Aaj ka kaam me LinkedIn task par step ke aage **📋** dabao -> draft (naam/college bhara hua) copy ho jayega. Bhejne ke baad **✓ Bhej diya** khud dabana.

@@ -108,3 +108,5 @@ button.link:hover { text-decoration: underline; }
 @media (max-width: 700px) { .cards { grid-template-columns: 1fr; } .task { flex-wrap: wrap; } .bigbtn { width: 100%; } }
 .steps { padding-left: 20px; line-height: 1.9; margin: 0 0 12px; }
 .copyicon { font-size: 15px; padding: 0 4px; vertical-align: baseline; }
+.card-prompt { display: flex; gap: 6px; align-items: center; font-weight: 400; }
+.card-prompt input { padding: 4px 8px; font-size: 13px; }

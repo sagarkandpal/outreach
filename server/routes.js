@@ -156,48 +156,12 @@ async function buildToday(settings) {
 
 router.get('/today', wrap(async (req, res) => res.json(await buildToday(await getSettings()))));
 
-// one structured prompt for Claude Desktop (Gmail) covering every email due today
+// prompt for Claude Desktop (Gmail) covering the emails due today (optionally for one college)
 router.post('/prompt/emails', wrap(async (req, res) => {
   const settings = await getSettings();
-  const { ready, ...out } = buildEmailPrompt(await buildToday(settings), settings.emailSteps, req.body && req.body.senderName);
-  res.json(out);
-}));
-
-// Claude's strict sent-report -> preview (apply:false) or mark sent (apply:true). Only "sent" entries that match a
-// task still due today are marked; everything else stays pending.
-const norm = (s) => String(s || '').trim().toLowerCase();
-router.post('/prompt/report', wrap(async (req, res) => {
-  const { report, apply } = req.body || {};
-  if (!Array.isArray(report)) return res.status(400).json({ error: 'Report ka format galat hai (report array chahiye)' });
-  const settings = await getSettings();
-  const { ready } = buildEmailPrompt(await buildToday(settings), settings.emailSteps);
-  const pool = [...ready]; // due email tasks that were in the prompt; each can be claimed once
-  const out = { willMark: [], drafted: [], failed: [], unmatched: [], missing: [], marked: 0 };
-  const label = (t) => ({ email: t.email, step: t.stepLabel, college: t.college.replace('[DEMO] ', ''), name: t.name });
-
-  for (const e of report) {
-    const idx = pool.findIndex((t) => norm(t.email) === norm(e && e.email) && norm(t.stepLabel) === norm(e && e.step));
-    if (idx === -1) { out.unmatched.push({ email: e && e.email, step: e && e.step, status: e && e.status }); continue; }
-    const t = pool.splice(idx, 1)[0];
-    // attachment steps are only ever drafted by Claude; they are marked sent by hand after the user attaches + sends
-    if (norm(e.status) === 'drafted' && t.attachment) out.drafted.push({ ...label(t), attachment: t.attachment, link: String(e.link || '') });
-    else if (norm(e.status) === 'sent' && !t.attachment) out.willMark.push({ ...label(t), contactId: t.contactId, stepIndex: t.stepIndex });
-    else out.failed.push({ ...label(t), note: String(e.note || (norm(e.status) === 'sent' ? 'Attachment step "sent" nahi ho sakta, sirf draft' : '')) });
-  }
-  out.missing = pool.map(label); // in the prompt but not in the report -> stay pending
-
-  if (apply) {
-    for (const w of out.willMark) {
-      const c = await Contact.findById(w.contactId);
-      // still the same next step? (guards against double-marking on re-apply)
-      if (!c || c.status !== 'active' || c.emailSent.length !== w.stepIndex) continue;
-      c.emailSent.push(new Date());
-      await c.save();
-      out.marked++;
-    }
-  }
-  out.willMark = out.willMark.map(({ contactId, stepIndex, ...rest }) => rest);
-  res.json(out);
+  const { senderName, college } = req.body || {};
+  const items = (await buildToday(settings)).filter((i) => !college || i.college === college);
+  res.json(buildEmailPrompt(items, settings.emailSteps, senderName));
 }));
 
 // ---------- replied list ----------

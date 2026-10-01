@@ -29,7 +29,8 @@ const ymd = (d) => {
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
 };
 const prettyDate = (d) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-const safeUrl = (u) => (/^https?:\/\//i.test(u) ? u : u ? 'https://' + u : '');
+const savedSender = () => { try { return localStorage.getItem('senderName') || ''; } catch { return ''; } };
+const safeUrl =(u) => (/^https?:\/\//i.test(u) ? u : u ? 'https://' + u : '');
 
 async function guard(fn) {
   try { await fn(); } catch (e) { toast(e.message); }
@@ -71,67 +72,13 @@ async function renderToday() {
       </div>
     </div>
     <div class="help">💡 <b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Agla follow-up apne aap 2 din baad yahin aa jayega. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis college ka hai.</div>
-    <div class="row"><label>Sender naam: <input id="senderName" style="width:140px" placeholder="Sagar"></label>
-      <button class="btn primary" id="genPrompt">✨ Prompt for all emails</button>
-      <span class="muted">Aaj ke saare emails ka ek Claude prompt (Gmail wale Claude me paste karo)</span></div>
-    <div id="promptBox" class="card" hidden></div>
     <div id="todayCards"></div>`;
 
-  const senderInput = document.getElementById('senderName');
-  try { senderInput.value = localStorage.getItem('senderName') || 'Sagar'; } catch { senderInput.value = 'Sagar'; }
-  document.getElementById('genPrompt').onclick = () => guard(async () => {
-    const box = document.getElementById('promptBox');
-    const show = async () => {
-      const senderName = senderInput.value.trim();
-      try { localStorage.setItem('senderName', senderName); } catch {}
-      const r = await api('POST', '/prompt/emails', { senderName });
-      box.hidden = false;
-      const warn = [
-        r.missingDrafts.length ? `⚠️ Settings me in steps ka draft nahi hai: <b>${esc(r.missingDrafts.join(', '))}</b>` : '',
-        ...r.skipped.map((s) => `⚠️ Skip: ${esc(s)}`),
-      ].filter(Boolean).join('<br>');
-      box.innerHTML = r.count
-        ? `<h2>Claude prompt — ${r.count} email${r.count > 1 ? 's' : ''}</h2>
-           ${warn ? `<p>${warn}</p>` : ''}
-           <textarea id="promptText" readonly style="min-height:260px">${esc(r.prompt)}</textarea>
-           <div class="row" style="margin-top:8px"><button class="btn primary" id="copyPrompt">Copy prompt</button>
-             <button class="btn" id="closePrompt">Band karo</button></div>
-           <h3 style="margin-top:16px">Claude ka report paste karo</h3>
-           <p class="muted">Claude ke aakhri message ka json block yahan paste karo. Sirf jo "sent" honge unhe hi auto ✓ mark kiya jayega. "Drafted" wale tum khud bhejke "✓ Bhej diya" dabaoge.</p>
-           <textarea id="reportText" placeholder='{"report":[...]}' style="min-height:100px"></textarea>
-           <div class="row" style="margin-top:8px"><button class="btn primary" id="checkReport">Check karo</button></div>
-           <div id="reportOut"></div>`
-        : `<h2>Koi email nahi bhejna</h2><p>${warn || 'Aaj koi email task nahi hai.'}</p><button class="btn" id="closePrompt">Band karo</button>`;
-      document.getElementById('closePrompt').onclick = () => { box.hidden = true; };
-      const cp = document.getElementById('copyPrompt');
-      if (cp) cp.onclick = () => { navigator.clipboard.writeText(document.getElementById('promptText').value); toast('Prompt copied'); };
-      const chk = document.getElementById('checkReport');
-      if (chk) chk.onclick = () => guard(async () => {
-        const text = document.getElementById('reportText').value;
-        const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        const raw = fence ? fence[1] : text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
-        let parsed;
-        try { parsed = JSON.parse(raw); } catch { throw new Error('Report ka format galat hai (json parse nahi hua)'); }
-        const report = Array.isArray(parsed) ? parsed : parsed.report;
-        const p = await api('POST', '/prompt/report', { report });
-        const who = (x) => `${esc(x.college)} · ${esc(x.name || '—')} · ${esc(x.email)} · ${esc(x.step)}`;
-        const out = document.getElementById('reportOut');
-        out.innerHTML = `
-          ${p.willMark.length ? `<p><b>✅ Mark honge (${p.willMark.length}):</b><br>${p.willMark.map(who).join('<br>')}</p>` : '<p class="muted">Koi email mark hone layak nahi mila.</p>'}
-          ${p.drafted.length ? `<p><b>📝 Draft ready (${p.drafted.length}) — link kholo, attachment lagao, send karo, phir Aaj ka kaam me "✓ Bhej diya" dabao:</b><br>${p.drafted.map((x) => `${who(x)} · 📎 ${esc(x.attachment)} ${/^https:\/\//i.test(x.link) ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">Draft kholo ↗</a>` : '<span class="muted">(link nahi mila, Gmail Drafts me dekho)</span>'}`).join('<br>')}</p>` : ''}
-          ${p.failed.length ? `<p><b>❌ Failed (pending rahenge):</b><br>${p.failed.map((x) => `${who(x)}${x.note ? ' — ' + esc(x.note) : ''}`).join('<br>')}</p>` : ''}
-          ${p.missing.length ? `<p><b>⚠️ Report me nahi aaye (pending rahenge):</b><br>${p.missing.map(who).join('<br>')}</p>` : ''}
-          ${p.unmatched.length ? `<p><b>⚠️ Match nahi hue (ignore):</b><br>${p.unmatched.map((x) => `${esc(x.email)} · ${esc(x.step)} · ${esc(x.status)}`).join('<br>')}</p>` : ''}
-          ${p.willMark.length ? `<button class="btn primary" id="applyReport">${p.willMark.length} ko ✓ mark karo</button>` : ''}`;
-        const ap = document.getElementById('applyReport');
-        if (ap) ap.onclick = () => guard(async () => {
-          const r = await api('POST', '/prompt/report', { report, apply: true });
-          toast(`${r.marked} done ✓`); render();
-        });
-      });
-    };
-    await show();
-  });
+  // college card 📋 button: build the prompt for one college
+  const buildPrompt = async (college, senderName) => {
+    try { localStorage.setItem('senderName', senderName); } catch {}
+    return api('POST', '/prompt/emails', { senderName, college });
+  };
 
   const draw = () => {
     const ch = document.getElementById('fChannel').value;
@@ -148,7 +95,10 @@ async function renderToday() {
 
     box.innerHTML = `<div class="cards">${[...colleges].map(([name, people]) => `
       <div class="card tcard">
-        <div class="tcard-head">🏫 ${esc(name.replace('[DEMO] ', ''))}</div>
+        <div class="tcard-head">🏫 ${esc(name.replace('[DEMO] ', ''))}
+          ${[...people.values()].some((p) => p.tasks.some((t) => t.channel === 'email'))
+            ? `<span class="card-prompt"><input data-sender placeholder="Sender naam" value="${esc(savedSender())}" style="width:110px">
+                <button class="link copyicon" data-copycollege="${esc(name)}" title="Is college ke saare emails ka Claude prompt copy karo">📋 Prompt</button></span>` : ''}</div>
         ${[...people.values()].map((p) => `
           <div class="person">
             <div class="person-top">
@@ -181,6 +131,15 @@ async function renderToday() {
       if (note === null) return;
       await api('POST', `/contacts/${b.dataset.reply}/status`, { status: 'handling_personally', note });
       toast('Follow-ups band'); render();
+    }));
+    box.querySelectorAll('[data-copycollege]').forEach((b) => b.onclick = () => guard(async () => {
+      const senderName = b.parentElement.querySelector('[data-sender]').value.trim();
+      if (!senderName) return toast('Pehle sender naam likho');
+      const college = b.dataset.copycollege;
+      const r = await buildPrompt(college, senderName);
+      if (!r.count) return toast(r.skipped[0] || 'Is college ka koi email ready nahi');
+      await navigator.clipboard.writeText(r.prompt);
+      toast(`${college.replace('[DEMO] ', '')}: ${r.count} emails ka prompt copy ho gaya ✓`);
     }));
     box.querySelectorAll('[data-msg]').forEach((b) => b.onclick = () => {
       const t = items.find((x) => x.contactId === b.dataset.msg && x.channel === 'linkedin');
@@ -425,7 +384,7 @@ async function renderSettings() {
     linkedin: { first: settings.linkedinSteps[0], gaps: settings.linkedinSteps.slice(1).map((s) => s.gapDays) },
   };
   // drafts per channel, index 0 = primary/connection note, then follow-ups
-  // (email: "Prompt for all emails"; linkedin: 📋 copy icon in Aaj ka kaam)
+  // (email: college card "📋 Prompt"; linkedin: 📋 copy icon in Aaj ka kaam)
   const drafts = {
     email: settings.emailSteps.map((s) => s.draft || ''),
     linkedin: settings.linkedinSteps.map((s) => s.draft || ''),
@@ -464,7 +423,7 @@ async function renderSettings() {
         ${importNote ? `<p>${importNote}</p>` : ''}
       </div>
       <h3>✍️ Email drafts</h3>
-      <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{college}</code>, <code>{sender_name}</code> (Aaj ka kaam page ke "Sender naam" box se aata hai). "Prompt for all emails" isi draft ko Claude ko dega.</p>
+      <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{college}</code>, <code>{sender_name}</code> (Aaj ka kaam me college card ke "Sender naam" box se aata hai). College card ka "📋 Prompt" isi draft ko Claude ko dega.</p>
       ${drafts.email.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.email : 'Follow-up ' + i}</b>
         <label class="muted" style="margin-left:12px">📎 Attachment: <input data-attach="${i}" value="${esc(attachments[i] || '')}" placeholder="khali = seedha send; e.g. Demo video" style="width:240px"></label>
         <textarea data-draft="email:${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
