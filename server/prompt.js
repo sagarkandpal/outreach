@@ -44,6 +44,7 @@ Rules:
 - Har recipient ko sirf uske Step ka draft bhejo (Primary ya Follow-up N). Kisi aur step ka draft mat bhejna.${draftRules}
 - Draft ke andar {first_name} ki jagah recipient ka First name, aur {college} ki jagah College ka naam daalo. Baaki draft ka text bilkul same rakho, kuch add/edit mat karo.${senderRule}
 - Draft ki pehli line "Subject:" se shuru ho to wo email ka subject hai, baaki body hai.
+- Draft mein jahan [text](url) jaisa markdown link ho, use email mein clickable hyperlink bana ke bhejo: email ki HTML body use karo (har paragraph <p> mein, link <a href="url">text</a>), plain text body mein markdown kabhi mat bhejo. Agar connector HTML body support nahi karta to us email ko bhejo mat, sirf Gmail draft banao aur table mein "Failed: HTML body unsupported" likho.
 - Har email alag alag bhejo (koi CC/BCC ya group mail nahi).
 - Ambiguous kuch ho to guess mat karo; wo email mat bhejo aur table mein "Failed" likho.
 - "Sent" sirf tab likho jab email Gmail se sach mein bhej diya gaya ho (draft bana dena ya queue karna "sent" nahi hai). Zara bhi shak ho ya error aaye to "Failed" likho aur wajah batao.
