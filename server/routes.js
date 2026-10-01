@@ -156,6 +156,27 @@ async function buildToday(settings) {
 
 router.get('/today', wrap(async (req, res) => res.json(await buildToday(await getSettings()))));
 
+// steps marked sent today (latest step per channel) so they can be undone from the Today tab
+router.get('/today/done', wrap(async (req, res) => {
+  const settings = await getSettings();
+  const colleges = await College.find().lean();
+  const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
+  const now = new Date();
+  const isToday = (d) => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  const out = [];
+  for (const c of await Contact.find().lean()) {
+    for (const [channel, sent, steps] of [['email', c.emailSent, settings.emailSteps], ['linkedin', c.linkedinSent, settings.linkedinSteps]]) {
+      if (!sent || !sent.length || !isToday(new Date(sent[sent.length - 1]))) continue;
+      out.push({
+        contactId: c._id, college: cname[String(c.collegeId)] || '?', name: c.name, role: c.role,
+        channel, stepLabel: (steps[sent.length - 1] || {}).label || `Step ${sent.length}`,
+      });
+    }
+  }
+  out.sort((a, b) => a.college.localeCompare(b.college));
+  res.json(out);
+}));
+
 // prompt for Claude Desktop (Gmail) covering the emails due today (optionally for one college)
 router.post('/prompt/emails', wrap(async (req, res) => {
   const settings = await getSettings();

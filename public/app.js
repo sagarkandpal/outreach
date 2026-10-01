@@ -1,6 +1,7 @@
 const view = document.getElementById('view');
 let settings = null;
 let currentTab = 'today';
+let todayFilter = ''; // Today tab channel filter, kept across re-renders
 const ROLE_SUGGESTIONS = ['Dean', 'Head', 'Manager', 'Vice Chancellor', 'Principal', 'Director', 'HOD', 'Placement Officer'];
 
 // ---------- helpers ----------
@@ -72,7 +73,24 @@ async function renderToday() {
       </div>
     </div>
     <div class="help">💡 <b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Agla follow-up apne aap 2 din baad yahin aa jayega. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis college ka hai.</div>
-    <div id="todayCards"></div>`;
+    <div id="todayCards"></div>
+    <div id="todayDone"></div>`;
+
+  // steps already marked sent today, each with an undo button (guards against mis-clicks)
+  const drawDone = async () => {
+    const ch = document.getElementById('fChannel').value;
+    const done = (await api('GET', '/today/done')).filter((d) => !ch || d.channel === ch);
+    const box = document.getElementById('todayDone');
+    if (!done.length) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="card"><div class="tcard-head">✓ Aaj bheje hue (galti se dab gaya ho toh Undo)</div>
+      ${done.map((d) => `<div class="task"><div class="task-main"><div class="task-title">${d.channel === 'email' ? '📧' : '💼'} ${esc(d.stepLabel)} · <b>${esc(d.name || d.role || '—')}</b>
+        <small class="muted">${esc(d.college.replace('[DEMO] ', ''))}</small></div></div>
+        <button class="btn" data-undo="${d.contactId}" data-ch="${d.channel}">↩ Undo</button></div>`).join('')}</div>`;
+    box.querySelectorAll('[data-undo]').forEach((b) => b.onclick = () => guard(async () => {
+      await api('DELETE', `/contacts/${b.dataset.undo}/sent?channel=${b.dataset.ch}`);
+      toast('Undo ho gaya ↩'); render();
+    }));
+  };
 
   // college card 📋 button: build the prompt for one college
   const buildPrompt = async (college, senderName) => {
@@ -149,8 +167,11 @@ async function renderToday() {
     });
     box.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => { navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); });
   };
-  document.getElementById('fChannel').onchange = draw;
+  const sel = document.getElementById('fChannel');
+  sel.value = todayFilter;
+  sel.onchange = () => { todayFilter = sel.value; draw(); drawDone(); };
   draw();
+  drawDone();
 }
 
 // ---------- COLLEGES grid ----------
