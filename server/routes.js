@@ -145,6 +145,7 @@ async function buildToday(settings) {
         contactId: c._id, college, role: c.role, name: c.name,
         email: c.email, linkedinUrl: c.linkedinUrl, channel, stepIndex: i, stepLabel: steps[i].label,
         state: cells[i].state, daysLate: cells[i].days || 0, isFirst: i === 0, message,
+        attachment: channel === 'email' ? String(steps[i].attachment || '').trim() : '',
       });
     }
   }
@@ -171,15 +172,17 @@ router.post('/prompt/report', wrap(async (req, res) => {
   const settings = await getSettings();
   const { ready } = buildEmailPrompt(await buildToday(settings), settings.emailSteps);
   const pool = [...ready]; // due email tasks that were in the prompt; each can be claimed once
-  const out = { willMark: [], failed: [], unmatched: [], missing: [], marked: 0 };
+  const out = { willMark: [], drafted: [], failed: [], unmatched: [], missing: [], marked: 0 };
   const label = (t) => ({ email: t.email, step: t.stepLabel, college: t.college.replace('[DEMO] ', ''), name: t.name });
 
   for (const e of report) {
     const idx = pool.findIndex((t) => norm(t.email) === norm(e && e.email) && norm(t.stepLabel) === norm(e && e.step));
     if (idx === -1) { out.unmatched.push({ email: e && e.email, step: e && e.step, status: e && e.status }); continue; }
     const t = pool.splice(idx, 1)[0];
-    if (norm(e.status) === 'sent') out.willMark.push({ ...label(t), contactId: t.contactId, stepIndex: t.stepIndex });
-    else out.failed.push({ ...label(t), note: String(e.note || '') });
+    // attachment steps are only ever drafted by Claude; they are marked sent by hand after the user attaches + sends
+    if (norm(e.status) === 'drafted' && t.attachment) out.drafted.push({ ...label(t), attachment: t.attachment, link: String(e.link || '') });
+    else if (norm(e.status) === 'sent' && !t.attachment) out.willMark.push({ ...label(t), contactId: t.contactId, stepIndex: t.stepIndex });
+    else out.failed.push({ ...label(t), note: String(e.note || (norm(e.status) === 'sent' ? 'Attachment step "sent" nahi ho sakta, sirf draft' : '')) });
   }
   out.missing = pool.map(label); // in the prompt but not in the report -> stay pending
 

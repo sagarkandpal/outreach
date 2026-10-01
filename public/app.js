@@ -97,7 +97,7 @@ async function renderToday() {
            <div class="row" style="margin-top:8px"><button class="btn primary" id="copyPrompt">Copy prompt</button>
              <button class="btn" id="closePrompt">Band karo</button></div>
            <h3 style="margin-top:16px">Claude ka report paste karo</h3>
-           <p class="muted">Claude ke aakhri message ka json block yahan paste karo. Sirf jo "sent" honge unhe hi auto ✓ mark kiya jayega.</p>
+           <p class="muted">Claude ke aakhri message ka json block yahan paste karo. Sirf jo "sent" honge unhe hi auto ✓ mark kiya jayega. "Drafted" wale tum khud bhejke "✓ Bhej diya" dabaoge.</p>
            <textarea id="reportText" placeholder='{"report":[...]}' style="min-height:100px"></textarea>
            <div class="row" style="margin-top:8px"><button class="btn primary" id="checkReport">Check karo</button></div>
            <div id="reportOut"></div>`
@@ -118,6 +118,7 @@ async function renderToday() {
         const out = document.getElementById('reportOut');
         out.innerHTML = `
           ${p.willMark.length ? `<p><b>✅ Mark honge (${p.willMark.length}):</b><br>${p.willMark.map(who).join('<br>')}</p>` : '<p class="muted">Koi email mark hone layak nahi mila.</p>'}
+          ${p.drafted.length ? `<p><b>📝 Draft ready (${p.drafted.length}) — link kholo, attachment lagao, send karo, phir Aaj ka kaam me "✓ Bhej diya" dabao:</b><br>${p.drafted.map((x) => `${who(x)} · 📎 ${esc(x.attachment)} ${/^https:\/\//i.test(x.link) ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">Draft kholo ↗</a>` : '<span class="muted">(link nahi mila, Gmail Drafts me dekho)</span>'}`).join('<br>')}</p>` : ''}
           ${p.failed.length ? `<p><b>❌ Failed (pending rahenge):</b><br>${p.failed.map((x) => `${who(x)}${x.note ? ' — ' + esc(x.note) : ''}`).join('<br>')}</p>` : ''}
           ${p.missing.length ? `<p><b>⚠️ Report me nahi aaye (pending rahenge):</b><br>${p.missing.map(who).join('<br>')}</p>` : ''}
           ${p.unmatched.length ? `<p><b>⚠️ Match nahi hue (ignore):</b><br>${p.unmatched.map((x) => `${esc(x.email)} · ${esc(x.step)} · ${esc(x.status)}`).join('<br>')}</p>` : ''}
@@ -160,6 +161,7 @@ async function renderToday() {
                 <div class="task-main">
                   <div class="task-title">${t.channel === 'email' ? '📧 Email' : '💼 LinkedIn'} · ${esc(t.stepLabel)}
                     ${t.channel === 'linkedin' ? `<button class="link copyicon" data-msg="${t.contactId}" title="Is step ka message copy karo">📋</button>` : ''}
+                    ${t.attachment ? `<span class="tag due" title="Claude sirf draft banayega, attachment tum lagaoge">📎 ${esc(t.attachment)}</span>` : ''}
                     ${t.state === 'overdue' ? `<span class="tag overdue">${t.daysLate} din late</span>` : `<span class="tag due">Aaj</span>`}</div>
                   <div class="task-reach">${t.channel === 'email'
                     ? (t.email ? `${esc(t.email)} <button class="link" data-copy="${esc(t.email)}">Copy</button>` : '<span class="muted">email nahi hai</span>')
@@ -428,6 +430,7 @@ async function renderSettings() {
     email: settings.emailSteps.map((s) => s.draft || ''),
     linkedin: settings.linkedinSteps.map((s) => s.draft || ''),
   };
+  const attachments = settings.emailSteps.map((s) => s.attachment || ''); // email only; non-empty = Claude drafts, user sends
   const titles = { email: '📧 Email', linkedin: '💼 LinkedIn' };
   const firstNames = { email: 'Primary Email', linkedin: 'Connection Note' };
   let importNote = ''; // result of the last import, shown in the import box
@@ -463,6 +466,7 @@ async function renderSettings() {
       <h3>✍️ Email drafts</h3>
       <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{college}</code>, <code>{sender_name}</code> (Aaj ka kaam page ke "Sender naam" box se aata hai). "Prompt for all emails" isi draft ko Claude ko dega.</p>
       ${drafts.email.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.email : 'Follow-up ' + i}</b>
+        <label class="muted" style="margin-left:12px">📎 Attachment: <input data-attach="${i}" value="${esc(attachments[i] || '')}" placeholder="khali = seedha send; e.g. Demo video" style="width:240px"></label>
         <textarea data-draft="email:${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
       <h3>💼 LinkedIn drafts</h3>
       <p class="muted">Har step ka message yahan paste karo. Placeholders: <code>{first_name}</code>, <code>{college}</code>. Aaj ka kaam me LinkedIn task par 📋 dabane se ye copy hoga.</p>
@@ -476,8 +480,10 @@ async function renderSettings() {
       draft[ch].gaps.length = n;
       while (drafts[ch].length < n + 1) drafts[ch].push('');
       drafts[ch].length = n + 1;
+      if (ch === 'email') { while (attachments.length < n + 1) attachments.push(''); attachments.length = n + 1; }
     };
     const sync = () => {
+      view.querySelectorAll('[data-attach]').forEach((el) => (attachments[el.dataset.attach] = el.value.trim()));
       view.querySelectorAll('[data-gap]').forEach((el) => (draft[el.dataset.gap].gaps[el.dataset.i] = Math.max(0, Number(el.value) || 0)));
       view.querySelectorAll('[data-draft]').forEach((el) => {
         const [ch, i] = el.dataset.draft.split(':');
@@ -510,8 +516,8 @@ async function renderSettings() {
     document.getElementById('saveSettings').onclick = () => guard(async () => {
       sync();
       const build = (ch) => [
-        { label: firstNames[ch], gapDays: 0, draft: drafts[ch][0] },
-        ...draft[ch].gaps.map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g, draft: drafts[ch][i + 1] })),
+        { label: firstNames[ch], gapDays: 0, draft: drafts[ch][0], ...(ch === 'email' && { attachment: attachments[0] || '' }) },
+        ...draft[ch].gaps.map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g, draft: drafts[ch][i + 1], ...(ch === 'email' && { attachment: attachments[i + 1] || '' }) })),
       ];
       await api('PUT', '/settings', { emailSteps: build('email'), linkedinSteps: build('linkedin') });
       toast('Saved'); render();

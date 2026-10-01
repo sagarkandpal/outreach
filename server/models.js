@@ -1,7 +1,11 @@
 const mongoose = require('mongoose');
 
 const stepSchema = new mongoose.Schema(
-  { label: String, gapDays: { type: Number, default: 2 }, draft: { type: String, default: '' } },
+  {
+    label: String, gapDays: { type: Number, default: 2 }, draft: { type: String, default: '' },
+    // email only: non-empty = this step needs a manual attachment, so Claude only creates a Gmail draft
+    attachment: { type: String, default: '' },
+  },
   { _id: false }
 );
 
