@@ -1,6 +1,7 @@
 const view = document.getElementById('view');
 let settings = null;
 let currentTab = 'today';
+let todayFilter = ''; // Today tab channel filter, kept across re-renders
 const ROLE_SUGGESTIONS = ['Dean', 'Head', 'Manager', 'Vice Chancellor', 'Principal', 'Director', 'HOD', 'Placement Officer'];
 
 // ---------- helpers ----------
@@ -166,7 +167,9 @@ async function renderToday() {
     });
     box.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => { navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); });
   };
-  document.getElementById('fChannel').onchange = () => { draw(); drawDone(); };
+  const sel = document.getElementById('fChannel');
+  sel.value = todayFilter;
+  sel.onchange = () => { todayFilter = sel.value; draw(); drawDone(); };
   draw();
   drawDone();
 }
