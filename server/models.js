@@ -46,8 +46,6 @@ const DEFAULT_SETTINGS = {
   ],
   linkedinSteps: [
     { label: 'Connection Note', gapDays: 0 },
-    { label: 'Follow-up 1', gapDays: 2 },
-    { label: 'Follow-up 2', gapDays: 2 },
   ],
   roles: ['Dean', 'Head', 'Manager', 'Vice'],
 };
@@ -57,6 +55,8 @@ const Settings = mongoose.model('Settings', settingsSchema);
 async function getSettings() {
   let s = await Settings.findOne({ key: 'main' });
   if (!s) s = await Settings.create(DEFAULT_SETTINGS);
+  // LinkedIn is connection-note only: drop any stored follow-up steps
+  if (s.linkedinSteps.length > 1) { s.linkedinSteps = s.linkedinSteps.slice(0, 1); await s.save(); }
   return s;
 }
 

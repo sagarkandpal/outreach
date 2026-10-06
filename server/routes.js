@@ -23,7 +23,7 @@ router.put('/settings', wrap(async (req, res) => {
   const s = await getSettings();
   const { emailSteps, linkedinSteps, roles } = req.body;
   if (emailSteps) s.emailSteps = emailSteps;
-  if (linkedinSteps) s.linkedinSteps = linkedinSteps;
+  if (linkedinSteps) s.linkedinSteps = linkedinSteps.slice(0, 1);
   if (roles) s.roles = roles;
   await s.save();
   res.json(s);
@@ -198,7 +198,7 @@ router.get('/replied', wrap(async (req, res) => {
 router.post('/import', wrap(async (req, res) => {
   const rows = req.body.rows || [];
   const cache = {};
-  let colleges = 0, contacts = 0;
+  let colleges = 0, contacts = 0, skipped = 0;
   for (const r of rows) {
     const cn = (r.college || '').trim();
     if (!cn) continue;
@@ -207,13 +207,17 @@ router.post('/import', wrap(async (req, res) => {
       if (!col) { col = await College.create({ name: cn }); colleges++; }
       cache[cn.toLowerCase()] = col;
     }
-    await Contact.create({
-      collegeId: cache[cn.toLowerCase()]._id, role: r.role || '', name: r.name || '',
-      email: r.email || '', linkedinUrl: r.linkedin || '',
-    });
+    const collegeId = cache[cn.toLowerCase()]._id;
+    const email = (r.email || '').trim(), linkedinUrl = (r.linkedin || '').trim();
+    const name = (r.name || '').trim(), role = (r.role || '').trim();
+    // skip rows already present (same college + email / linkedin / name+role), so re-clicking Import is harmless
+    const ci = (v) => new RegExp(`^${v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const same = email ? { email: ci(email) } : linkedinUrl ? { linkedinUrl: ci(linkedinUrl) } : { name: ci(name), role: ci(role) };
+    if (await Contact.exists({ collegeId, ...same })) { skipped++; continue; }
+    await Contact.create({ collegeId, role, name, email, linkedinUrl });
     contacts++;
   }
-  res.json({ colleges, contacts });
+  res.json({ colleges, contacts, skipped });
 }));
 
 // ---------- search (email / linkedin / name / college / role) ----------

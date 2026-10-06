@@ -5,6 +5,20 @@ let todayFilter = ''; // Today tab channel filter, kept across re-renders
 const ROLE_SUGGESTIONS = ['Dean', 'Head', 'Manager', 'Vice Chancellor', 'Principal', 'Director', 'HOD', 'Placement Officer'];
 
 // ---------- helpers ----------
+const ICON = {
+  mail: '<path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>',
+  linkedin: '<path d="M6 9v9M6 6v.01M10 18v-9m0 3c0-2 1.5-3 3-3s3 1 3 3v6"/>',
+  school: '<path d="M3 10 12 5l9 5-9 5z"/><path d="M7 12.5V17c0 1 2.2 2 5 2s5-1 5-2v-4.5"/>',
+  check: '<path d="m5 12 5 5L20 7"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>',
+  clip: '<path d="m20 11-8 8a5 5 0 0 1-7-7l8-8a3.5 3.5 0 0 1 5 5l-8 8a2 2 0 0 1-3-3l7-7"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+  ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  party: '<path d="m5 20 4-12 8 8z"/><path d="M14 4v2M19 9h2M18 4l1-1"/>',
+};
+const ic = (n) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
+
+
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function api(method, url, body) {
@@ -60,19 +74,19 @@ async function refreshBadges() {
 
 // ---------- TODAY ----------
 async function renderToday() {
-  const items = await api('GET', '/today');
+  let items = await api('GET', '/today');
   const late = items.filter((i) => i.state === 'overdue').length;
   const collegeCount = new Set(items.map((i) => i.college)).size;
   view.innerHTML = `
     <div class="stats">
-      <div class="stat"><b>${items.length}</b><span>Aaj ke kaam</span></div>
-      <div class="stat ${late ? 'bad' : ''}"><b>${late}</b><span>Late ho chuke</span></div>
-      <div class="stat"><b>${collegeCount}</b><span>Colleges</span></div>
+      <div class="stat"><b id="stTotal">${items.length}</b><span>Aaj ke kaam</span></div>
+      <div class="stat ${late ? 'bad' : ''}" id="stLateBox"><b id="stLate">${late}</b><span>Late ho chuke</span></div>
+      <div class="stat"><b id="stColleges">${collegeCount}</b><span>Colleges</span></div>
       <div class="filter">Dikhao:
         <select id="fChannel"><option value="">Email + LinkedIn</option><option value="email">Sirf Email</option><option value="linkedin">Sirf LinkedIn</option></select>
       </div>
     </div>
-    <div class="help">💡 <b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Agla follow-up apne aap 2 din baad yahin aa jayega. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis college ka hai.</div>
+    <div class="help"><b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Email ka agla follow-up apne aap 2 din baad yahin aa jayega. Card me <b>✓ Sab Bhej diya</b> dabake us college ke saare tasks ek saath mark karo. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis college ka hai.</div>
     <div id="todayCards"></div>
     <div id="todayDone"></div>`;
 
@@ -82,13 +96,13 @@ async function renderToday() {
     const done = (await api('GET', '/today/done')).filter((d) => !ch || d.channel === ch);
     const box = document.getElementById('todayDone');
     if (!done.length) { box.innerHTML = ''; return; }
-    box.innerHTML = `<div class="card"><div class="tcard-head">✓ Aaj bheje hue (galti se dab gaya ho toh Undo)</div>
-      ${done.map((d) => `<div class="task"><div class="task-main"><div class="task-title">${d.channel === 'email' ? '📧' : '💼'} ${esc(d.stepLabel)} · <b>${esc(d.name || d.role || '—')}</b>
+    box.innerHTML = `<div class="card"><div class="tcard-head"><span class="tcard-title">${ic('check')}Aaj bheje hue <small class="muted">galti se dab gaya ho toh Undo</small></span></div><div class="tcard-body">
+      ${done.map((d) => `<div class="task"><div class="task-main"><div class="task-title"><span class="chan ${d.channel}">${ic(d.channel === 'email' ? 'mail' : 'linkedin')}${esc(d.stepLabel)}</span> · <b>${esc(d.name || d.role || '—')}</b>
         <small class="muted">${esc(d.college.replace('[DEMO] ', ''))}</small></div></div>
-        <button class="btn" data-undo="${d.contactId}" data-ch="${d.channel}">↩ Undo</button></div>`).join('')}</div>`;
+        <button class="btn small" data-undo="${d.contactId}" data-ch="${d.channel}">${ic('undo')}Undo</button></div>`).join('')}</div></div>`;
     box.querySelectorAll('[data-undo]').forEach((b) => b.onclick = () => guard(async () => {
       await api('DELETE', `/contacts/${b.dataset.undo}/sent?channel=${b.dataset.ch}`);
-      toast('Undo ho gaya ↩'); render();
+      toast('Undo ho gaya'); render();
     }));
   };
 
@@ -96,6 +110,36 @@ async function renderToday() {
   const buildPrompt = async (college, senderName) => {
     try { localStorage.setItem('senderName', senderName); } catch {}
     return api('POST', '/prompt/emails', { senderName, college });
+  };
+
+  // Update the page in place after "sent": no re-render, so cards never jump or re-flow.
+  const afterSent = (sent) => {
+    const keys = new Set(sent.map((t) => `${t.contactId}:${t.channel}`));
+    items = items.filter((i) => !keys.has(`${i.contactId}:${i.channel}`));
+    keys.forEach((k) => {
+      const row = document.querySelector(`[data-task="${k}"]`);
+      if (!row) return;
+      const person = row.closest('.person'), card = row.closest('.tcard');
+      row.classList.add('leaving');
+      setTimeout(() => {
+        row.remove();
+        if (!person.querySelector('.task')) person.remove();
+        const left = card.querySelectorAll('.task').length;
+        const cnt = card.querySelector('.sentall .count');
+        if (cnt) cnt.textContent = left;
+        if (!left) {
+          card.classList.add('finished');
+          card.querySelector('.tcard-body').innerHTML = `<div class="card-done">${ic('check')}Is college ka kaam ho gaya</div>`;
+          card.querySelectorAll('.tcard-head button, .tcard-head input').forEach((el) => { el.disabled = true; });
+        }
+      }, 220);
+    });
+    const late = items.filter((i) => i.state === 'overdue').length;
+    document.getElementById('stTotal').textContent = items.length;
+    document.getElementById('stLate').textContent = late;
+    document.getElementById('stLateBox').classList.toggle('bad', late > 0);
+    document.getElementById('stColleges').textContent = new Set(items.map((i) => i.college)).size;
+    drawDone(); refreshBadges();
   };
 
   const draw = () => {
@@ -109,40 +153,53 @@ async function renderToday() {
       people.get(t.contactId).tasks.push(t);
     });
     const box = document.getElementById('todayCards');
-    if (!colleges.size) { box.innerHTML = '<div class="card empty big">🎉 Aaj ka kaam khatam! Kuch pending nahi hai.</div>'; return; }
+    if (!colleges.size) { box.innerHTML = `<div class="card empty big">${ic('party')}<div>Aaj ka kaam khatam! Kuch pending nahi hai.</div></div>`; return; }
 
     box.innerHTML = `<div class="cards">${[...colleges].map(([name, people]) => `
-      <div class="card tcard">
-        <div class="tcard-head">🏫 ${esc(name.replace('[DEMO] ', ''))}
+      <div class="card tcard" data-card="${esc(name)}">
+        <div class="tcard-head"><span class="tcard-title">${ic('school')}${esc(name.replace('[DEMO] ', ''))}</span>
           ${[...people.values()].some((p) => p.tasks.some((t) => t.channel === 'email'))
             ? `<span class="card-prompt"><input data-sender placeholder="Sender naam" value="${esc(savedSender())}" style="width:110px">
-                <button class="link copyicon" data-copycollege="${esc(name)}" title="Is college ke saare emails ka Claude prompt copy karo">📋 Prompt</button></span>` : ''}</div>
+                <button class="btn small" data-copycollege="${esc(name)}" title="Is college ke saare emails ka Claude prompt copy karo">${ic('copy')}Prompt</button></span>` : ''}
+          <button class="btn primary small sentall" data-sentall="${esc(name)}">${ic('check')}Sab Bhej diya <span class="count">${[...people.values()].reduce((n, p) => n + p.tasks.length, 0)}</span></button></div>
+        <div class="tcard-body">
         ${[...people.values()].map((p) => `
-          <div class="person">
+          <div class="person" data-person="${p.info.contactId}">
             <div class="person-top">
               <div class="avatar">${esc((p.info.name || p.info.role || '?').trim()[0].toUpperCase())}</div>
               <div class="who2"><b>${esc(p.info.name || '—')}</b><small>${esc(p.info.role)}</small></div>
               <button class="link" data-reply="${p.info.contactId}" data-who="${esc(p.info.name || p.info.role)}">Reply aaya?</button>
             </div>
             ${p.tasks.map((t) => `
-              <div class="task ${t.state}">
+              <div class="task ${t.state}" data-task="${t.contactId}:${t.channel}">
                 <div class="task-main">
-                  <div class="task-title">${t.channel === 'email' ? '📧 Email' : '💼 LinkedIn'} · ${esc(t.stepLabel)}
-                    ${t.channel === 'linkedin' ? `<button class="link copyicon" data-msg="${t.contactId}" title="Is step ka message copy karo">📋</button>` : ''}
-                    ${t.attachment ? `<span class="tag due" title="Claude sirf draft banayega, attachment tum lagaoge">📎 ${esc(t.attachment)}</span>` : ''}
+                  <div class="task-title"><span class="chan ${t.channel}">${ic(t.channel === 'email' ? 'mail' : 'linkedin')}${t.channel === 'email' ? 'Email' : 'LinkedIn'}</span> <span class="step">${esc(t.stepLabel)}</span>
+                    ${t.channel === 'linkedin' ? `<button class="link copyicon" data-msg="${t.contactId}" title="Is step ka message copy karo" aria-label="Message copy karo">${ic('copy')}</button>` : ''}
+                    ${t.attachment ? `<span class="tag due" title="Claude sirf draft banayega, attachment tum lagaoge">${ic('clip')}${esc(t.attachment)}</span>` : ''}
                     ${t.state === 'overdue' ? `<span class="tag overdue">${t.daysLate} din late</span>` : `<span class="tag due">Aaj</span>`}</div>
                   <div class="task-reach">${t.channel === 'email'
                     ? (t.email ? `${esc(t.email)} <button class="link" data-copy="${esc(t.email)}">Copy</button>` : '<span class="muted">email nahi hai</span>')
-                    : (t.linkedinUrl ? `<a href="${esc(safeUrl(t.linkedinUrl))}" target="_blank" rel="noopener">LinkedIn profile kholo ↗</a>` : '<span class="muted">link nahi hai</span>')}</div>
+                    : (t.linkedinUrl ? `<a href="${esc(safeUrl(t.linkedinUrl))}" target="_blank" rel="noopener">LinkedIn profile kholo ${ic('ext')}</a>` : '<span class="muted">link nahi hai</span>')}</div>
                 </div>
-                <button class="btn primary bigbtn" data-sent="${t.contactId}" data-ch="${t.channel}">✓ Bhej diya</button>
+                <button class="btn primary bigbtn" data-sent="${t.contactId}" data-ch="${t.channel}">${ic('check')}Bhej diya</button>
               </div>`).join('')}
           </div>`).join('')}
+        </div>
       </div>`).join('')}</div>`;
 
     box.querySelectorAll('[data-sent]').forEach((b) => b.onclick = () => guard(async () => {
-      await api('POST', `/contacts/${b.dataset.sent}/sent`, { channel: b.dataset.ch });
-      toast('Done ✓'); render();
+      b.disabled = true;
+      try { await api('POST', `/contacts/${b.dataset.sent}/sent`, { channel: b.dataset.ch }); } catch (e) { b.disabled = false; throw e; }
+      toast('Done'); afterSent([{ contactId: b.dataset.sent, channel: b.dataset.ch }]);
+    }));
+    box.querySelectorAll('[data-sentall]').forEach((b) => b.onclick = () => guard(async () => {
+      const tasks = list.filter((t) => t.college === b.dataset.sentall);
+      if (!confirm(`${tasks.length} tasks "Bhej diya" mark karun?`)) return;
+      b.disabled = true;
+      const ok = [];
+      try { for (const t of tasks) { await api('POST', `/contacts/${t.contactId}/sent`, { channel: t.channel }); ok.push(t); } }
+      finally { b.disabled = false; if (ok.length) afterSent(ok); }
+      toast(`${ok.length} tasks done`);
     }));
     box.querySelectorAll('[data-reply]').forEach((b) => b.onclick = () => guard(async () => {
       const note = prompt(`${b.dataset.who} ka reply aaya. Note likho (optional):`, '');
@@ -423,11 +480,11 @@ async function renderSettings() {
           <div>
             <h3>${titles[ch]}</h3>
             <div class="row"><b>1. ${firstNames[ch]}</b> <span class="muted">(pehla message)</span></div>
-            <div class="row">Follow-ups kitne?
+            ${ch === 'linkedin' ? '<div class="row muted">Sirf connection note — follow-ups nahi hote.</div>' : `<div class="row">Follow-ups kitne?
               <button class="btn small" data-dec="${ch}">−</button>
               <input type="number" min="0" max="15" data-count="${ch}" value="${draft[ch].gaps.length}" style="width:64px">
-              <button class="btn small" data-inc="${ch}">+</button></div>
-            ${draft[ch].gaps.map((g, i) => `<div class="row">
+              <button class="btn small" data-inc="${ch}">+</button></div>`}
+            ${ch === 'linkedin' ? '' : draft[ch].gaps.map((g, i) => `<div class="row">
               <span style="width:110px">${i + 2}. Follow-up ${i + 1}</span>
               <span class="muted">pichhle ke</span>
               <input type="number" min="0" data-gap="${ch}" data-i="${i}" value="${g}" style="width:64px"> <span class="muted">din baad</span></div>`).join('')}
@@ -483,7 +540,7 @@ async function renderSettings() {
       if (r.count) {
         for (const ch of ['email', 'linkedin']) {
           const last = r[ch].length - 1;
-          if (last > draft[ch].gaps.length) setCount(ch, Math.min(last, 15)); // document has more follow-ups than settings
+          if (ch === 'email' && last > draft[ch].gaps.length) setCount(ch, Math.min(last, 15)); // document has more follow-ups than settings
           r[ch].forEach((d, i) => { if (d && i < drafts[ch].length) drafts[ch][i] = d; });
         }
       }
@@ -497,7 +554,7 @@ async function renderSettings() {
       sync();
       const build = (ch) => [
         { label: firstNames[ch], gapDays: 0, draft: drafts[ch][0], ...(ch === 'email' && { attachment: attachments[0] || '' }) },
-        ...draft[ch].gaps.map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g, draft: drafts[ch][i + 1], ...(ch === 'email' && { attachment: attachments[i + 1] || '' }) })),
+        ...(ch === 'linkedin' ? [] : draft[ch].gaps).map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g, draft: drafts[ch][i + 1], ...(ch === 'email' && { attachment: attachments[i + 1] || '' }) })),
       ];
       await api('PUT', '/settings', { emailSteps: build('email'), linkedinSteps: build('linkedin') });
       toast('Saved'); render();
