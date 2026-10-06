@@ -53,6 +53,12 @@ router.patch('/colleges/:id', wrap(async (req, res) => {
   res.json(await College.findByIdAndUpdate(req.params.id, { name, city, notes }, { new: true }));
 }));
 
+router.patch('/colleges/:id/owner', wrap(async (req, res) => {
+  const owner = String(req.body.owner || '').toLowerCase();
+  if (!['', 'arjun', 'sagar'].includes(owner)) return res.status(400).json({ error: 'owner must be arjun, sagar or empty' });
+  res.json(await College.findByIdAndUpdate(req.params.id, { owner }, { new: true }));
+}));
+
 router.delete('/colleges/:id', wrap(async (req, res) => {
   await Contact.deleteMany({ collegeId: req.params.id });
   await College.findByIdAndDelete(req.params.id);
@@ -124,6 +130,7 @@ router.post('/contacts/:id/status', wrap(async (req, res) => {
 async function buildToday(settings) {
   const colleges = await College.find().lean();
   const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
+  const cowner = Object.fromEntries(colleges.map((c) => [String(c._id), c.owner || '']));
   const contacts = await Contact.find({ status: 'active' }).lean();
   const items = [];
   for (const raw of contacts) {
@@ -142,7 +149,7 @@ async function buildToday(settings) {
             .replace(/\{college\}/g, college.replace('[DEMO] ', ''))
         : '';
       items.push({
-        contactId: c._id, college, role: c.role, name: c.name,
+        contactId: c._id, college, owner: cowner[String(c.collegeId)] || '', role: c.role, name: c.name,
         email: c.email, linkedinUrl: c.linkedinUrl, channel, stepIndex: i, stepLabel: steps[i].label,
         state: cells[i].state, daysLate: cells[i].days || 0, isFirst: i === 0, message,
         attachment: channel === 'email' ? String(steps[i].attachment || '').trim() : '',
@@ -161,6 +168,7 @@ router.get('/today/done', wrap(async (req, res) => {
   const settings = await getSettings();
   const colleges = await College.find().lean();
   const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
+  const cowner = Object.fromEntries(colleges.map((c) => [String(c._id), c.owner || '']));
   const now = new Date();
   const isToday = (d) => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
   const out = [];
@@ -168,7 +176,7 @@ router.get('/today/done', wrap(async (req, res) => {
     for (const [channel, sent, steps] of [['email', c.emailSent, settings.emailSteps], ['linkedin', c.linkedinSent, settings.linkedinSteps]]) {
       if (!sent || !sent.length || !isToday(new Date(sent[sent.length - 1]))) continue;
       out.push({
-        contactId: c._id, college: cname[String(c.collegeId)] || '?', name: c.name, role: c.role,
+        contactId: c._id, college: cname[String(c.collegeId)] || '?', owner: cowner[String(c.collegeId)] || '', name: c.name, role: c.role,
         channel, stepLabel: (steps[sent.length - 1] || {}).label || `Step ${sent.length}`,
       });
     }

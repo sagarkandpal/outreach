@@ -2,6 +2,10 @@ const view = document.getElementById('view');
 let settings = null;
 let currentTab = 'today';
 let todayFilter = ''; // Today tab channel filter, kept across re-renders
+const OWNERS = { arjun: 'Arjun', sagar: 'Sagar' };
+const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+let todayOwner = lsGet('todayOwner'); // Today tab owner filter ('' = all, 'arjun', 'sagar', 'none')
 const ROLE_SUGGESTIONS = ['Dean', 'Head', 'Manager', 'Vice Chancellor', 'Principal', 'Director', 'HOD', 'Placement Officer'];
 
 // ---------- helpers ----------
@@ -63,23 +67,31 @@ async function render() {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === currentTab));
   settings = await api('GET', '/settings');
   refreshBadges();
-  await ({ today: renderToday, colleges: renderColleges, replied: renderReplied, add: renderAdd, settings: renderSettings }[currentTab])();
+  await ({ today: renderToday, colleges: renderColleges, replied: renderReplied, assign: renderAssign, add: renderAdd, settings: renderSettings }[currentTab])();
 }
 
 async function refreshBadges() {
-  const [today, replied] = await Promise.all([api('GET', '/today'), api('GET', '/replied')]);
+  const [today, replied, colleges] = await Promise.all([api('GET', '/today'), api('GET', '/replied'), api('GET', '/colleges')]);
   document.getElementById('todayCount').textContent = today.length;
   document.getElementById('repliedCount').textContent = replied.length;
+  const unassigned = colleges.filter((c) => !c.owner).length;
+  const ab = document.getElementById('assignCount');
+  ab.textContent = unassigned;
+  ab.classList.toggle('grey', !unassigned);
 }
 
 // ---------- TODAY ----------
+const ownerMatch = (i) => !todayOwner || (todayOwner === 'none' ? !i.owner : i.owner === todayOwner);
+
 async function renderToday() {
   let items = await api('GET', '/today');
-  const late = items.filter((i) => i.state === 'overdue').length;
-  const collegeCount = new Set(items.map((i) => i.college)).size;
+  const mine0 = items.filter(ownerMatch);
+  const late = mine0.filter((i) => i.state === 'overdue').length;
+  const collegeCount = new Set(mine0.map((i) => i.college)).size;
   view.innerHTML = `
+    <div class="owner-tabs" id="ownerTabs"></div>
     <div class="stats">
-      <div class="stat"><b id="stTotal">${items.length}</b><span>Aaj ke kaam</span></div>
+      <div class="stat"><b id="stTotal">${mine0.length}</b><span>Aaj ke kaam</span></div>
       <div class="stat ${late ? 'bad' : ''}" id="stLateBox"><b id="stLate">${late}</b><span>Late ho chuke</span></div>
       <div class="stat"><b id="stColleges">${collegeCount}</b><span>Colleges</span></div>
       <div class="filter">Dikhao:
@@ -93,7 +105,7 @@ async function renderToday() {
   // steps already marked sent today, each with an undo button (guards against mis-clicks)
   const drawDone = async () => {
     const ch = document.getElementById('fChannel').value;
-    const done = (await api('GET', '/today/done')).filter((d) => !ch || d.channel === ch);
+    const done = (await api('GET', '/today/done')).filter((d) => (!ch || d.channel === ch) && ownerMatch(d));
     const box = document.getElementById('todayDone');
     if (!done.length) { box.innerHTML = ''; return; }
     box.innerHTML = `<div class="card"><div class="tcard-head"><span class="tcard-title">${ic('check')}Aaj bheje hue <small class="muted">galti se dab gaya ho toh Undo</small></span></div><div class="tcard-body">
@@ -106,10 +118,32 @@ async function renderToday() {
     }));
   };
 
+  // Arjun / Sagar tabs: count = tasks due for that person's colleges
+  const drawOwnerTabs = () => {
+    const n = (o) => items.filter((i) => (o === 'none' ? !i.owner : i.owner === o)).length;
+    const tabs = [['', 'Sab', items.length], ['arjun', 'Arjun', n('arjun')], ['sagar', 'Sagar', n('sagar')]];
+    if (n('none')) tabs.push(['none', 'Unassigned', n('none')]);
+    const box = document.getElementById('ownerTabs');
+    box.innerHTML = tabs.map(([k, l, c]) => `<button class="${todayOwner === k ? 'active' : ''}" data-owner="${k}">${l} <span class="badge ${todayOwner === k ? '' : 'grey'}">${c}</span></button>`).join('');
+    box.querySelectorAll('[data-owner]').forEach((b) => b.onclick = () => {
+      todayOwner = b.dataset.owner; lsSet('todayOwner', todayOwner);
+      drawOwnerTabs(); draw(); drawDone(); updateStats();
+    });
+  };
+
   // college card 📋 button: build the prompt for one college
   const buildPrompt = async (college, senderName) => {
     try { localStorage.setItem('senderName', senderName); } catch {}
     return api('POST', '/prompt/emails', { senderName, college });
+  };
+
+  const updateStats = () => {
+    const mine = items.filter(ownerMatch);
+    const late = mine.filter((i) => i.state === 'overdue').length;
+    document.getElementById('stTotal').textContent = mine.length;
+    document.getElementById('stLate').textContent = late;
+    document.getElementById('stLateBox').classList.toggle('bad', late > 0);
+    document.getElementById('stColleges').textContent = new Set(mine.map((i) => i.college)).size;
   };
 
   // Update the page in place after "sent": no re-render, so cards never jump or re-flow.
@@ -134,17 +168,13 @@ async function renderToday() {
         }
       }, 220);
     });
-    const late = items.filter((i) => i.state === 'overdue').length;
-    document.getElementById('stTotal').textContent = items.length;
-    document.getElementById('stLate').textContent = late;
-    document.getElementById('stLateBox').classList.toggle('bad', late > 0);
-    document.getElementById('stColleges').textContent = new Set(items.map((i) => i.college)).size;
+    drawOwnerTabs(); updateStats();
     drawDone(); refreshBadges();
   };
 
   const draw = () => {
     const ch = document.getElementById('fChannel').value;
-    const list = items.filter((i) => !ch || i.channel === ch);
+    const list = items.filter((i) => (!ch || i.channel === ch) && ownerMatch(i));
     const colleges = new Map();
     list.forEach((t) => {
       if (!colleges.has(t.college)) colleges.set(t.college, new Map());
@@ -227,6 +257,7 @@ async function renderToday() {
   const sel = document.getElementById('fChannel');
   sel.value = todayFilter;
   sel.onchange = () => { todayFilter = sel.value; draw(); drawDone(); };
+  drawOwnerTabs();
   draw();
   drawDone();
 }
@@ -328,6 +359,32 @@ async function renderColleges() {
     const linkedinUrl = prompt('LinkedIn URL:', '') ?? '';
     await api('POST', '/contacts', { collegeId: b.dataset.addc, role, name, email, linkedinUrl });
     render();
+  }));
+}
+
+// ---------- ASSIGN ----------
+let assignFilter = 'none';
+async function renderAssign() {
+  const colleges = await api('GET', '/colleges');
+  const count = (o) => colleges.filter((c) => (c.owner || 'none') === o).length;
+  const tabs = [['none', 'Unassigned'], ['arjun', 'Arjun'], ['sagar', 'Sagar'], ['', 'Sab']];
+  const list = colleges.filter((c) => !assignFilter || (c.owner || 'none') === assignFilter);
+  view.innerHTML = `
+    <div class="help"><b>Kaun kaunsa college bhejega:</b> college ke saamne apne naam ka checkbox tick karo. Naye colleges (import/add) pehle <b>Unassigned</b> me aate hain, yahin se assign karo. "Aaj ka kaam" me upar se Arjun / Sagar ke colleges alag dekh sakte ho.</div>
+    <div class="legend">${tabs.map(([k, l]) => `<button class="btn small ${assignFilter === k ? 'primary' : ''}" data-af="${k}">${l} (${k ? count(k) : colleges.length})</button>`).join(' ')}</div>
+    <div class="card"><table><thead><tr><th>College</th><th>Contacts</th><th>Arjun</th><th>Sagar</th></tr></thead><tbody>
+      ${list.map((c) => `<tr>
+        <td><b>${esc(c.name)}</b> <span class="muted">${esc(c.city || '')}</span></td>
+        <td>${c.contacts.length}</td>
+        ${Object.keys(OWNERS).map((o) => `<td><label><input type="checkbox" data-own="${c._id}" data-o="${o}" ${c.owner === o ? 'checked' : ''}> ${OWNERS[o]}</label></td>`).join('')}
+      </tr>`).join('') || '<tr><td colspan="4" class="muted">Is list me koi college nahi.</td></tr>'}
+    </tbody></table></div>`;
+  view.querySelectorAll('[data-af]').forEach((b) => b.onclick = () => { assignFilter = b.dataset.af; renderAssign(); });
+  view.querySelectorAll('[data-own]').forEach((el) => el.onchange = () => guard(async () => {
+    try { await api('PATCH', `/colleges/${el.dataset.own}/owner`, { owner: el.checked ? el.dataset.o : '' }); }
+    catch (e) { el.checked = !el.checked; throw e; }
+    toast(el.checked ? `${OWNERS[el.dataset.o]} ko assign ho gaya` : 'Unassign ho gaya');
+    const y = window.scrollY; await renderAssign(); window.scrollTo(0, y); refreshBadges();
   }));
 }
 

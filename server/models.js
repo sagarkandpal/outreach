@@ -17,7 +17,7 @@ const settingsSchema = new mongoose.Schema({
 });
 
 const collegeSchema = new mongoose.Schema(
-  { name: { type: String, required: true, trim: true }, city: String, notes: String },
+  { name: { type: String, required: true, trim: true }, city: String, notes: String, owner: { type: String, enum: ['', 'arjun', 'sagar'], default: '' } },
   { timestamps: true }
 );
 

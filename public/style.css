@@ -104,6 +104,11 @@ tr.inactive td { opacity: .55; }
 .stat.bad { border-color: var(--red-line); background: var(--red-bg); }
 .stat.bad b { color: var(--red); }
 .filter { margin-left: auto; align-self: center; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.owner-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.owner-tabs button { border: 1px solid var(--line); background: var(--surface); padding: 8px 16px; border-radius: 999px; font: 600 13.5px/1 inherit; font-family: inherit; cursor: pointer; color: var(--muted); display: inline-flex; align-items: center; gap: 8px; }
+.owner-tabs button:hover { color: var(--ink); }
+.owner-tabs button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.owner-tabs button.active .badge { background: #fff; color: var(--ink); }
 .help { background: var(--accent-soft); border: 1px solid var(--accent-line); color: #5b3a05; padding: 12px 16px; border-radius: var(--r); margin-bottom: 20px; font-size: 13px; line-height: 1.6; }
 .steps { padding-left: 20px; line-height: 1.9; margin: 0 0 12px; }
 
