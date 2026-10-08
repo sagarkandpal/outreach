@@ -1,6 +1,7 @@
 const view = document.getElementById('view');
 let settings = null;
 let currentTab = 'today';
+let todayStep = ''; // Today tab step filter ('' = all, '0' = first touch, '1' = Follow-up 1, ...)
 let todayFilter = ''; // Today tab channel filter, kept across re-renders
 const OWNERS = { arjun: 'Arjun', sagar: 'Sagar' };
 const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
@@ -82,10 +83,11 @@ async function refreshBadges() {
 
 // ---------- TODAY ----------
 const ownerMatch = (i) => !todayOwner || (todayOwner === 'none' ? !i.owner : i.owner === todayOwner);
+const stepMatch = (i) => todayStep === '' || String(i.stepIndex) === todayStep;
 
 async function renderToday() {
   let items = await api('GET', '/today');
-  const mine0 = items.filter(ownerMatch);
+  const mine0 = items.filter((i) => ownerMatch(i) && stepMatch(i));
   const late = mine0.filter((i) => i.state === 'overdue').length;
   const collegeCount = new Set(mine0.map((i) => i.college)).size;
   view.innerHTML = `
@@ -94,6 +96,9 @@ async function renderToday() {
       <div class="stat"><b id="stTotal">${mine0.length}</b><span>Aaj ke kaam</span></div>
       <div class="stat ${late ? 'bad' : ''}" id="stLateBox"><b id="stLate">${late}</b><span>Late ho chuke</span></div>
       <div class="stat"><b id="stColleges">${collegeCount}</b><span>Colleges</span></div>
+      <div class="filter">Follow-up:
+        <select id="fStep"></select>
+      </div>
       <div class="filter">Dikhao:
         <select id="fChannel"><option value="">Email + LinkedIn</option><option value="email">Sirf Email</option><option value="linkedin">Sirf LinkedIn</option></select>
       </div>
@@ -138,7 +143,7 @@ async function renderToday() {
   };
 
   const updateStats = () => {
-    const mine = items.filter(ownerMatch);
+    const mine = items.filter((i) => ownerMatch(i) && stepMatch(i));
     const late = mine.filter((i) => i.state === 'overdue').length;
     document.getElementById('stTotal').textContent = mine.length;
     document.getElementById('stLate').textContent = late;
@@ -174,7 +179,7 @@ async function renderToday() {
 
   const draw = () => {
     const ch = document.getElementById('fChannel').value;
-    const list = items.filter((i) => (!ch || i.channel === ch) && ownerMatch(i));
+    const list = items.filter((i) => (!ch || i.channel === ch) && ownerMatch(i) && stepMatch(i));
     const colleges = new Map();
     list.forEach((t) => {
       if (!colleges.has(t.college)) colleges.set(t.college, new Map());
@@ -257,6 +262,13 @@ async function renderToday() {
   const sel = document.getElementById('fChannel');
   sel.value = todayFilter;
   sel.onchange = () => { todayFilter = sel.value; draw(); drawDone(); };
+  // step dropdown: Sab / Primary / Follow-up 1, 2, 3 ... (only steps that actually have tasks today)
+  const stepSel = document.getElementById('fStep');
+  const stepNums = [...new Set(items.map((i) => i.stepIndex))].sort((a, b) => a - b);
+  if (todayStep !== '' && !stepNums.includes(Number(todayStep))) todayStep = '';
+  stepSel.innerHTML = '<option value="">Sab</option>' + stepNums.map((n) => `<option value="${n}">${n === 0 ? 'Pehla message' : 'Follow-up ' + n}</option>`).join('');
+  stepSel.value = todayStep;
+  stepSel.onchange = () => { todayStep = stepSel.value; draw(); updateStats(); };
   drawOwnerTabs();
   draw();
   drawDone();
