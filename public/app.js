@@ -1,5 +1,6 @@
 const view = document.getElementById('view');
 let settings = null;
+let seg = null; // active segment {slug, name, unit, unitPlural, linkedinMax}
 let currentTab = 'today';
 let todayStep = ''; // Today tab step filter ('' = all, '0' = first touch, '1' = Follow-up 1, ...)
 let todayFilter = ''; // Today tab channel filter, kept across re-renders
@@ -7,6 +8,7 @@ const OWNERS = { arjun: 'Arjun', sagar: 'Sagar' };
 const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 let todayOwner = lsGet('todayOwner'); // Today tab owner filter ('' = all, 'arjun', 'sagar', 'none')
+const STARTUP_ROLES = ['Founder', 'Co-founder', 'CEO', 'CTO', 'COO', 'Head of HR', 'Head of Growth', 'Product Head'];
 const ROLE_SUGGESTIONS = ['Dean', 'Head', 'Manager', 'Vice Chancellor', 'Principal', 'Director', 'HOD', 'Placement Officer'];
 
 // ---------- helpers ----------
@@ -20,6 +22,9 @@ const ICON = {
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
   ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   party: '<path d="m5 20 4-12 8 8z"/><path d="M14 4v2M19 9h2M18 4l1-1"/>',
+  rocket: '<path d="M5 15c-1.5 1.3-2 5-2 5s3.7-.5 5-2"/><path d="M12 15 9 12c1-3 3-6 6-7.5 2.5-1 5-1 5-1s0 2.5-1 5C17.5 11 15 13 12 15z"/><circle cx="15.5" cy="8.5" r="1.3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  folder: '<path d="M3 7a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',
 };
 const ic = (n) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
 
@@ -29,7 +34,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 async function api(method, url, body) {
   const r = await fetch('/api' + url, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(seg && { 'X-Segment': seg.slug }) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await r.json();
@@ -95,7 +100,7 @@ async function renderToday() {
     <div class="stats">
       <div class="stat"><b id="stTotal">${mine0.length}</b><span>Aaj ke kaam</span></div>
       <div class="stat ${late ? 'bad' : ''}" id="stLateBox"><b id="stLate">${late}</b><span>Late ho chuke</span></div>
-      <div class="stat"><b id="stColleges">${collegeCount}</b><span>Colleges</span></div>
+      <div class="stat"><b id="stColleges">${collegeCount}</b><span>${esc(seg.unitPlural)}</span></div>
       <div class="filter">Follow-up:
         <select id="fStep"></select>
       </div>
@@ -103,7 +108,7 @@ async function renderToday() {
         <select id="fChannel"><option value="">Email + LinkedIn</option><option value="email">Sirf Email</option><option value="linkedin">Sirf LinkedIn</option></select>
       </div>
     </div>
-    <div class="help"><b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Email ka agla follow-up apne aap 2 din baad yahin aa jayega. Card me <b>✓ Sab Bhej diya</b> dabake us college ke saare tasks ek saath mark karo. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis college ka hai.</div>
+    <div class="help"><b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Email ka agla follow-up apne aap 2 din baad yahin aa jayega. Card me <b>✓ Sab Bhej diya</b> dabake us ${esc(seg.unit.toLowerCase())} ke saare tasks ek saath mark karo. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis ${esc(seg.unit.toLowerCase())} ka hai.</div>
     <div id="todayCards"></div>
     <div id="todayDone"></div>`;
 
@@ -168,7 +173,7 @@ async function renderToday() {
         if (cnt) cnt.textContent = left;
         if (!left) {
           card.classList.add('finished');
-          card.querySelector('.tcard-body').innerHTML = `<div class="card-done">${ic('check')}Is college ka kaam ho gaya</div>`;
+          card.querySelector('.tcard-body').innerHTML = `<div class="card-done">${ic('check')}Is ${esc(seg.unit.toLowerCase())} ka kaam ho gaya</div>`;
           card.querySelectorAll('.tcard-head button, .tcard-head input').forEach((el) => { el.disabled = true; });
         }
       }, 220);
@@ -195,7 +200,7 @@ async function renderToday() {
         <div class="tcard-head"><span class="tcard-title">${ic('school')}${esc(name.replace('[DEMO] ', ''))}</span>
           <span class="card-prompt"><input data-sender placeholder="Sender naam" value="${esc(savedSender())}" style="width:110px">
             ${[...people.values()].some((p) => p.tasks.some((t) => t.channel === 'email'))
-              ? `<button class="btn small" data-copycollege="${esc(name)}" title="Is college ke saare emails ka Claude prompt copy karo">${ic('copy')}Prompt</button>` : ''}</span>
+              ? `<button class="btn small" data-copycollege="${esc(name)}" title="Is ${esc(seg.unit.toLowerCase())} ke saare emails ka Claude prompt copy karo">${ic('copy')}Prompt</button>` : ''}</span>
           <button class="btn primary small sentall" data-sentall="${esc(name)}">${ic('check')}Sab Bhej diya <span class="count">${[...people.values()].reduce((n, p) => n + p.tasks.length, 0)}</span></button></div>
         <div class="tcard-body">
         ${[...people.values()].map((p) => `
@@ -247,7 +252,7 @@ async function renderToday() {
       if (!senderName) return toast('Pehle sender naam likho');
       const college = b.dataset.copycollege;
       const r = await buildPrompt(college, senderName);
-      if (!r.count) return toast(r.skipped[0] || 'Is college ka koi email ready nahi');
+      if (!r.count) return toast(r.skipped[0] || `Is ${seg.unit.toLowerCase()} ka koi email ready nahi`);
       await navigator.clipboard.writeText(r.prompt);
       toast(`${college.replace('[DEMO] ', '')}: ${r.count} emails ka prompt copy ho gaya ✓`);
     }));
@@ -292,7 +297,7 @@ function cellHtml(cell, channel, idx, contactId, label) {
 
 async function renderColleges() {
   const colleges = await api('GET', '/colleges');
-  if (!colleges.length) { view.innerHTML = '<div class="card empty">Abhi koi college nahi. "Add / Import" me jaake add karo.</div>'; return; }
+  if (!colleges.length) { view.innerHTML = `<div class="card empty">Abhi koi ${esc(seg.unit.toLowerCase())} nahi. "${esc(seg.unit)} add karo" me jaake add ya import karo.</div>`; return; }
   view.innerHTML = `
     <div class="legend">
       <span><b style="color:var(--green)">✓ date</b> bheja</span><span><b style="color:var(--amber)">Aaj</b> aaj bhejna hai</span>
@@ -363,11 +368,11 @@ async function renderColleges() {
     await api('DELETE', `/contacts/${b.dataset.delc}`); render();
   }));
   view.querySelectorAll('[data-delcol]').forEach((b) => b.onclick = () => guard(async () => {
-    if (!confirm('Poora college + uske saare contacts delete karun?')) return;
+    if (!confirm(`Poora ${seg.unit.toLowerCase()} + uske saare contacts delete karun?`)) return;
     await api('DELETE', `/colleges/${b.dataset.delcol}`); render();
   }));
   view.querySelectorAll('[data-addc]').forEach((b) => b.onclick = () => guard(async () => {
-    const role = prompt('Role (jaise Dean, Head, Principal...):', '');
+    const role = prompt(seg.slug === 'college' ? 'Role (jaise Dean, Head, Principal...):' : 'Role (jaise Founder, CEO, CTO...):', '');
     if (role === null) return;
     const name = prompt('Naam:', '') ?? '';
     const email = prompt('Email:', '') ?? '';
@@ -385,14 +390,14 @@ async function renderAssign() {
   const tabs = [['none', 'Unassigned'], ['arjun', 'Arjun'], ['sagar', 'Sagar'], ['', 'Sab']];
   const list = colleges.filter((c) => !assignFilter || (c.owner || 'none') === assignFilter);
   view.innerHTML = `
-    <div class="help"><b>Kaun kaunsa college bhejega:</b> college ke saamne apne naam ka checkbox tick karo. Naye colleges (import/add) pehle <b>Unassigned</b> me aate hain, yahin se assign karo. "Aaj ka kaam" me upar se Arjun / Sagar ke colleges alag dekh sakte ho.</div>
+    <div class="help"><b>Kaun kaunsa ${esc(seg.unit.toLowerCase())} bhejega:</b> ${esc(seg.unit.toLowerCase())} ke saamne apne naam ka checkbox tick karo. Naye ${esc(seg.unitPlural.toLowerCase())} (import/add) pehle <b>Unassigned</b> me aate hain, yahin se assign karo. "Aaj ka kaam" me upar se Arjun / Sagar ke ${esc(seg.unitPlural.toLowerCase())} alag dekh sakte ho.</div>
     <div class="legend">${tabs.map(([k, l]) => `<button class="btn small ${assignFilter === k ? 'primary' : ''}" data-af="${k}">${l} (${k ? count(k) : colleges.length})</button>`).join(' ')}</div>
-    <div class="card"><table><thead><tr><th>College</th><th>Contacts</th><th>Arjun</th><th>Sagar</th></tr></thead><tbody>
+    <div class="card"><table><thead><tr><th>${esc(seg.unit)}</th><th>Contacts</th><th>Arjun</th><th>Sagar</th></tr></thead><tbody>
       ${list.map((c) => `<tr>
         <td><b>${esc(c.name)}</b> <span class="muted">${esc(c.city || '')}</span></td>
         <td>${c.contacts.length}</td>
         ${Object.keys(OWNERS).map((o) => `<td><label><input type="checkbox" data-own="${c._id}" data-o="${o}" ${c.owner === o ? 'checked' : ''}> ${OWNERS[o]}</label></td>`).join('')}
-      </tr>`).join('') || '<tr><td colspan="4" class="muted">Is list me koi college nahi.</td></tr>'}
+      </tr>`).join('') || '<tr><td colspan="4" class="muted">Is list me koi ${esc(seg.unit.toLowerCase())} nahi.</td></tr>'}
     </tbody></table></div>`;
   view.querySelectorAll('[data-af]').forEach((b) => b.onclick = () => { assignFilter = b.dataset.af; renderAssign(); });
   view.querySelectorAll('[data-own]').forEach((el) => el.onchange = () => guard(async () => {
@@ -407,7 +412,7 @@ async function renderAssign() {
 async function renderReplied() {
   const list = await api('GET', '/replied');
   view.innerHTML = `<div class="card"><h2>Jinka reply aaya / jo main personally handle kar raha hoon (${list.length})</h2>
-    ${list.length ? `<table><thead><tr><th>College</th><th>Banda</th><th>Since</th><th>Note</th><th></th></tr></thead><tbody>
+    ${list.length ? `<table><thead><tr><th>${esc(seg.unit)}</th><th>Banda</th><th>Since</th><th>Note</th><th></th></tr></thead><tbody>
       ${list.map((c) => `<tr><td>${esc(c.college)}</td><td>${esc(c.name)} <span class="muted">(${esc(c.role)})</span><br><small class="muted">${esc(c.email)}</small></td>
         <td>${c.repliedAt ? prettyDate(c.repliedAt) : ''}</td>
         <td><input data-note="${c._id}" value="${esc(c.replyNote)}" style="width:100%"></td>
@@ -438,30 +443,30 @@ function parseCsv(text) {
     cols.push(cur.trim());
     rows.push({ college: cols[0], role: cols[1], name: cols[2], email: cols[3], linkedin: cols[4] });
   }
-  if (rows[0] && /^college/i.test(rows[0].college || '')) rows.shift(); // header row
+  if (rows[0] && /^(college|company|startup|organi[sz]ation)/i.test(rows[0].college || '')) rows.shift(); // header row
   return rows;
 }
 
 async function renderAdd() {
-  const roleList = `<datalist id="roleList">${ROLE_SUGGESTIONS.map((r) => `<option value="${esc(r)}">`).join('')}</datalist>`;
+  const roleList = `<datalist id="roleList">${(seg.slug === 'college' ? ROLE_SUGGESTIONS : STARTUP_ROLES).map((r) => `<option value="${esc(r)}">`).join('')}</datalist>`;
   view.innerHTML = `
-    <div class="card"><h2>Naya college add karo</h2>
-      <div class="row"><input id="cName" placeholder="College name *" style="min-width:280px"><input id="cCity" placeholder="City (optional)"></div>
+    <div class="card"><h2>Naya ${esc(seg.unit.toLowerCase())} add karo</h2>
+      <div class="row"><input id="cName" placeholder="${esc(seg.unit)} name *" style="min-width:280px"><input id="cCity" placeholder="City (optional)"></div>
       <div id="contactRows"></div>
       ${roleList}
       <div class="row">
         <button class="btn" id="addPerson">+ Banda add karo</button>
-        <button class="btn primary" id="saveCollege">Save college</button>
+        <button class="btn primary" id="saveCollege">Save ${esc(seg.unit.toLowerCase())}</button>
       </div>
     </div>
     <div class="card"><h2>Bulk import (Apollo / CSV / Excel se paste)</h2>
       <ol class="steps">
         <li><button class="btn small" id="dlTemplate">⬇ Demo template download karo (Excel me khulega)</button></li>
-        <li>Excel me apni profiles bharo: <b>college, role, name, email, linkedin</b>. Ek banda = ek row. Ek college ke jitne bande, utni rows (college ka naam har row me same likho).</li>
+        <li>Excel me apni profiles bharo: <b>${esc(seg.unit.toLowerCase())}, role, name, email, linkedin</b>. Ek banda = ek row. Ek ${esc(seg.unit.toLowerCase())} ke jitne bande, utni rows (naam har row me same likho).</li>
         <li>Phir ya toh <b>CSV file chuno</b>: <input type="file" id="csvFile" accept=".csv,.tsv,.txt"> ya Excel me rows select karke <b>Copy</b> karo aur neeche box me <b>Paste</b> karo.</li>
         <li><b>Import</b> dabao. Template ke sample rows (Demo College) hata dena ya baad me delete kar dena.</li>
       </ol>
-      <textarea id="csv" placeholder="IIT Demo, Dean, Dr. Sharma, sharma@iit.edu, linkedin.com/in/sharma"></textarea>
+      <textarea id="csv" placeholder="${seg.slug === 'college' ? 'IIT Demo, Dean, Dr. Sharma, sharma@iit.edu, linkedin.com/in/sharma' : 'Acme Labs, Founder, Riya Shah, riya@acme.io, linkedin.com/in/riya-shah'}"></textarea>
       <div class="row" style="margin-top:8px"><button class="btn primary" id="doImport">Import</button><span id="csvInfo" class="muted"></span></div>
     </div>`;
 
@@ -489,7 +494,7 @@ async function renderAdd() {
       return o;
     }).filter((o) => o.name || o.email || o.linkedinUrl);
     await api('POST', '/colleges', { name: document.getElementById('cName').value, city: document.getElementById('cCity').value, contacts });
-    toast('College saved'); currentTab = 'colleges'; render();
+    toast(`${seg.unit} saved`); currentTab = 'colleges'; render();
   });
   const csvBox = document.getElementById('csv');
   const csvInfo = document.getElementById('csvInfo');
@@ -503,7 +508,13 @@ async function renderAdd() {
     rd.readAsText(f);
   };
   document.getElementById('dlTemplate').onclick = () => {
-    const rows = [
+    const rows = seg.slug !== 'college' ? [
+      [seg.unit.toLowerCase(), 'role', 'name', 'email', 'linkedin'],
+      ['Demo Startup A', 'Founder', 'Riya Shah', 'riya@demo-a.io', 'linkedin.com/in/riya-demo'],
+      ['Demo Startup A', 'CTO', 'Aman Verma', 'aman@demo-a.io', 'linkedin.com/in/aman-demo'],
+      ['Demo Startup B', 'CEO', 'Kabir Nair', 'kabir@demo-b.io', 'linkedin.com/in/kabir-demo'],
+      ['Demo Startup B', 'Head of HR', 'Sneha Rao', 'sneha@demo-b.io', 'linkedin.com/in/sneha-demo'],
+    ] : [
       ['college', 'role', 'name', 'email', 'linkedin'],
       ['Demo College A', 'Dean', 'Dr. Anita Sharma', 'anita@demo-a.edu', 'linkedin.com/in/anita-demo'],
       ['Demo College A', 'Head', 'Prof. Rajesh Iyer', 'rajesh@demo-a.edu', 'linkedin.com/in/rajesh-demo'],
@@ -514,7 +525,7 @@ async function renderAdd() {
     const csv = '﻿' + rows.map((r) => r.map((v) => `"${v}"`).join(',')).join('\r\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    a.download = 'botza-import-template.csv';
+    a.download = `botza-${seg.slug}-import-template.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -522,7 +533,7 @@ async function renderAdd() {
     const rows = parseCsv(document.getElementById('csv').value);
     if (!rows.length) return toast('Kuch paste karo');
     const r = await api('POST', '/import', { rows });
-    toast(`${r.colleges} colleges, ${r.contacts} contacts imported`); currentTab = 'colleges'; render();
+    toast(`${r.colleges} ${seg.unitPlural.toLowerCase()}, ${r.contacts} contacts imported`); currentTab = 'colleges'; render();
   });
 }
 
@@ -542,21 +553,23 @@ async function renderSettings() {
   const attachments = settings.emailSteps.map((s) => s.attachment || ''); // email only; non-empty = Claude drafts, user sends
   const titles = { email: '📧 Email', linkedin: '💼 LinkedIn' };
   const firstNames = { email: 'Primary Email', linkedin: 'Connection Note' };
+  const noFollow = (ch) => ch === 'linkedin' && seg.linkedinMax <= 1; // college: LinkedIn = connection note only
+  const maxFollow = (ch) => (ch === 'linkedin' ? seg.linkedinMax - 1 : 15);
   let importNote = ''; // result of the last import, shown in the import box
 
   function draw() {
-    view.innerHTML = `<div class="card"><h2>Follow-up settings</h2>
+    view.innerHTML = `<div class="card"><h2>Follow-up settings — ${esc(seg.name)}</h2>
       <p class="muted">Primary message sabse pehle bhejna hota hai (wo bhi Aaj ka kaam me aata hai, aur "Bhej diya" dabake log hota hai). Uske baad ke follow-ups yahan set karo.</p>
       <div style="display:flex;gap:48px;flex-wrap:wrap">
         ${['email', 'linkedin'].map((ch) => `
           <div>
             <h3>${titles[ch]}</h3>
             <div class="row"><b>1. ${firstNames[ch]}</b> <span class="muted">(pehla message)</span></div>
-            ${ch === 'linkedin' ? '<div class="row muted">Sirf connection note — follow-ups nahi hote.</div>' : `<div class="row">Follow-ups kitne?
+            ${noFollow(ch) ? '<div class="row muted">Sirf connection note — follow-ups nahi hote.</div>' : `<div class="row">Follow-ups kitne?
               <button class="btn small" data-dec="${ch}">−</button>
-              <input type="number" min="0" max="15" data-count="${ch}" value="${draft[ch].gaps.length}" style="width:64px">
+              <input type="number" min="0" max="${maxFollow(ch)}" data-count="${ch}" value="${draft[ch].gaps.length}" style="width:64px">
               <button class="btn small" data-inc="${ch}">+</button></div>`}
-            ${ch === 'linkedin' ? '' : draft[ch].gaps.map((g, i) => `<div class="row">
+            ${noFollow(ch) ? '' : draft[ch].gaps.map((g, i) => `<div class="row">
               <span style="width:110px">${i + 2}. Follow-up ${i + 1}</span>
               <span class="muted">pichhle ke</span>
               <input type="number" min="0" data-gap="${ch}" data-i="${i}" value="${g}" style="width:64px"> <span class="muted">din baad</span></div>`).join('')}
@@ -578,13 +591,13 @@ async function renderSettings() {
         <label class="muted" style="margin-left:12px">📎 Attachment: <input data-attach="${i}" value="${esc(attachments[i] || '')}" placeholder="khali = seedha send; e.g. Demo video" style="width:240px"></label>
         <textarea data-draft="email:${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
       <h3>💼 LinkedIn drafts</h3>
-      <p class="muted">Har step ka message yahan paste karo. Placeholders: <code>{first_name}</code>, <code>{college}</code>. Aaj ka kaam me LinkedIn task par 📋 dabane se ye copy hoga.</p>
+      <p class="muted">Har step ka message yahan paste karo. Placeholders: <code>{first_name}</code>, <code>{college}</code> (= ${esc(seg.unit.toLowerCase())} ka naam), <code>{sender_name}</code>. Aaj ka kaam me LinkedIn task par 📋 dabane se ye copy hoga.</p>
       ${drafts.linkedin.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.linkedin : 'Follow-up ' + i}</b>
         <textarea data-draft="linkedin:${i}" placeholder="Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
       <br><button class="btn primary" id="saveSettings">Save</button></div>`;
 
     const setCount = (ch, n) => {
-      n = Math.max(0, Math.min(15, Number(n) || 0));
+      n = Math.max(0, Math.min(maxFollow(ch), Number(n) || 0));
       while (draft[ch].gaps.length < n) draft[ch].gaps.push(2);
       draft[ch].gaps.length = n;
       while (drafts[ch].length < n + 1) drafts[ch].push('');
@@ -612,7 +625,7 @@ async function renderSettings() {
       if (r.count) {
         for (const ch of ['email', 'linkedin']) {
           const last = r[ch].length - 1;
-          if (ch === 'email' && last > draft[ch].gaps.length) setCount(ch, Math.min(last, 15)); // document has more follow-ups than settings
+          if (!noFollow(ch) && last > draft[ch].gaps.length) setCount(ch, last); // document has more follow-ups than settings
           r[ch].forEach((d, i) => { if (d && i < drafts[ch].length) drafts[ch][i] = d; });
         }
       }
@@ -626,7 +639,7 @@ async function renderSettings() {
       sync();
       const build = (ch) => [
         { label: firstNames[ch], gapDays: 0, draft: drafts[ch][0], ...(ch === 'email' && { attachment: attachments[0] || '' }) },
-        ...(ch === 'linkedin' ? [] : draft[ch].gaps).map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g, draft: drafts[ch][i + 1], ...(ch === 'email' && { attachment: attachments[i + 1] || '' }) })),
+        ...(noFollow(ch) ? [] : draft[ch].gaps).map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g, draft: drafts[ch][i + 1], ...(ch === 'email' && { attachment: attachments[i + 1] || '' }) })),
       ];
       await api('PUT', '/settings', { emailSteps: build('email'), linkedinSteps: build('linkedin') });
       toast('Saved'); render();
@@ -684,4 +697,63 @@ fetch('/api/health').then((r) => r.json()).then((h) => {
   document.body.appendChild(el);
 }).catch(() => {});
 
-render();
+// ---------- SEGMENTS (landing screen, shown on every page load) ----------
+const landing = document.getElementById('landing');
+const appEl = document.getElementById('app');
+
+function enterSegment(chosen) {
+  seg = chosen;
+  lsSet('lastSegment', seg.slug);
+  currentTab = 'today';
+  todayStep = ''; todayFilter = '';
+  landing.hidden = true; appEl.hidden = false;
+  document.getElementById('segName').textContent = seg.name;
+  document.getElementById('tabColleges').textContent = `Saare ${seg.unitPlural.toLowerCase()}`;
+  document.getElementById('tabAdd').textContent = `${seg.unit} add karo`;
+  document.getElementById('q').value = '';
+  document.getElementById('results').hidden = true;
+  guard(render);
+}
+
+async function showLanding() {
+  seg = null;
+  appEl.hidden = true; landing.hidden = false;
+  landing.innerHTML = '<div class="land-loading">Loading…</div>';
+  const segs = await api('GET', '/segments');
+  const last = lsGet('lastSegment');
+  landing.innerHTML = `<div class="land">
+    <div class="brand land-brand"><div class="logo">B</div><h1>Botza Outreach<small>Tracker</small></h1></div>
+    <h2>Aapko kis segment me jaana hai?</h2>
+    <p class="muted">Segment chuno. Har segment ke contacts, drafts aur follow-ups alag rehte hain.</p>
+    <div class="seg-grid">
+      ${segs.map((g) => `<button class="seg-card ${g.slug === last ? 'last' : ''}" data-seg="${esc(g.slug)}">
+        <span class="seg-ico">${ic(g.slug === 'college' ? 'school' : g.slug === 'startup' ? 'rocket' : 'folder')}</span>
+        <b>${esc(g.name)}</b>
+        <span class="seg-meta">${g.orgs} ${esc((g.orgs === 1 ? g.unit : g.unitPlural).toLowerCase())} · ${g.contacts} contacts</span>
+        ${g.slug === last ? '<span class="seg-last">Pichhli baar yahin the</span>' : ''}
+      </button>`).join('')}
+      <button class="seg-card add" id="segAddBtn" type="button"><span class="seg-ico">${ic('plus')}</span><b>Naya segment add karo</b><span class="seg-meta">Jaise Agencies, Hospitals, Schools…</span></button>
+    </div>
+    <form id="segForm" class="card seg-form" hidden>
+      <h3>Naya segment</h3>
+      <div class="row"><input id="sfName" placeholder="Segment ka naam * (jaise Agencies)" required>
+        <input id="sfUnit" placeholder="Ek ko kya bolte hain? (jaise Agency)" style="min-width:220px"></div>
+      <div class="row"><button class="btn primary" type="submit">Segment banao</button><button class="btn" type="button" id="sfCancel">Cancel</button></div>
+    </form>
+  </div>`;
+  landing.querySelectorAll('[data-seg]').forEach((b) => b.onclick = () => enterSegment(segs.find((g) => g.slug === b.dataset.seg)));
+  const form = document.getElementById('segForm');
+  document.getElementById('segAddBtn').onclick = () => { form.hidden = false; document.getElementById('sfName').focus(); };
+  document.getElementById('sfCancel').onclick = () => { form.hidden = true; };
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    guard(async () => {
+      const created = await api('POST', '/segments', { name: document.getElementById('sfName').value, unit: document.getElementById('sfUnit').value });
+      toast('Segment ban gaya');
+      enterSegment({ ...created, linkedinMax: created.linkedinMax ?? 3 });
+    });
+  };
+}
+document.getElementById('segSwitch').onclick = () => guard(showLanding);
+
+guard(showLanding);

@@ -1,5 +1,5 @@
 const express = require('express');
-const { College, Contact, Settings, getSettings } = require('./models');
+const { College, Contact, Segment, getSettings, getSegment } = require('./models');
 const { decorate } = require('./due');
 const { buildEmailPrompt, firstName } = require('./prompt');
 
@@ -16,14 +16,55 @@ function parseDate(s) {
 const trackField = (channel) => (channel === 'linkedin' ? 'linkedinSent' : 'emailSent');
 const trackSteps = (settings, channel) => (channel === 'linkedin' ? settings.linkedinSteps : settings.emailSteps);
 
+// ---------- segments ----------
+const slugify = (n) => String(n || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+router.get('/segments', wrap(async (req, res) => {
+  const segs = await Segment.find().sort({ order: 1, createdAt: 1 }).lean();
+  const colleges = await College.find({}, 'segment').lean();
+  const segOf = Object.fromEntries(colleges.map((c) => [String(c._id), c.segment || 'college']));
+  const contactCount = {};
+  for (const c of await Contact.find({}, 'collegeId').lean()) { const k = segOf[String(c.collegeId)]; contactCount[k] = (contactCount[k] || 0) + 1; }
+  res.json(segs.map((g) => ({ ...g, orgs: colleges.filter((c) => (c.segment || 'college') === g.slug).length, contacts: contactCount[g.slug] || 0 })));
+}));
+
+router.post('/segments', wrap(async (req, res) => {
+  const name = String(req.body.name || '').trim();
+  const slug = slugify(name);
+  if (!slug) return res.status(400).json({ error: 'Segment ka naam likho' });
+  if (await Segment.exists({ slug })) return res.status(400).json({ error: 'Is naam ka segment pehle se hai' });
+  const unit = String(req.body.unit || '').trim() || 'Company';
+  const unitPlural = String(req.body.unitPlural || '').trim() || (/y$/i.test(unit) ? unit.slice(0, -1) + 'ies' : unit + 's');
+  const order = await Segment.countDocuments();
+  res.json(await Segment.create({ slug, name, unit, unitPlural, order }));
+}));
+
+// every request below works inside one segment (header X-Segment, default 'college')
+router.use(async (req, res, next) => {
+  try {
+    const seg = await getSegment(String(req.get('X-Segment') || 'college'));
+    if (!seg) return res.status(400).json({ error: 'Segment nahi mila' });
+    req.seg = seg;
+    next();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+const colFilter = (req) => ({ segment: req.seg.slug });
+const segColleges = (req) => College.find(colFilter(req));
+// plain (lean) contacts of this segment only
+async function segContacts(req, extra = {}, sort = { createdAt: 1 }) {
+  const ids = (await College.find(colFilter(req), '_id').lean()).map((c) => c._id);
+  return Contact.find({ collegeId: { $in: ids }, ...extra }).sort(sort).lean();
+}
+
 // ---------- settings ----------
-router.get('/settings', wrap(async (req, res) => res.json(await getSettings())));
+router.get('/settings', wrap(async (req, res) => res.json(await getSettings(req.seg.slug))));
 
 router.put('/settings', wrap(async (req, res) => {
-  const s = await getSettings();
+  const s = await getSettings(req.seg.slug);
   const { emailSteps, linkedinSteps, roles } = req.body;
   if (emailSteps) s.emailSteps = emailSteps;
-  if (linkedinSteps) s.linkedinSteps = linkedinSteps.slice(0, 1);
+  if (linkedinSteps) s.linkedinSteps = linkedinSteps.slice(0, req.seg.linkedinMax);
   if (roles) s.roles = roles;
   await s.save();
   res.json(s);
@@ -31,9 +72,9 @@ router.put('/settings', wrap(async (req, res) => {
 
 // ---------- colleges ----------
 router.get('/colleges', wrap(async (req, res) => {
-  const settings = await getSettings();
-  const colleges = await College.find().sort({ createdAt: 1 }).lean();
-  const contacts = await Contact.find().sort({ createdAt: 1 }).lean();
+  const settings = await getSettings(req.seg.slug);
+  const colleges = await segColleges(req).sort({ createdAt: 1 }).lean();
+  const contacts = await segContacts(req);
   const byCollege = {};
   contacts.forEach((c) => (byCollege[c.collegeId] ||= []).push(decorate(c, settings)));
   res.json(colleges.map((c) => ({ ...c, contacts: byCollege[c._id] || [] })));
@@ -41,8 +82,8 @@ router.get('/colleges', wrap(async (req, res) => {
 
 router.post('/colleges', wrap(async (req, res) => {
   const { name, city, notes, contacts = [] } = req.body;
-  if (!name || !name.trim()) return res.status(400).json({ error: 'College name required' });
-  const college = await College.create({ name, city, notes });
+  if (!name || !name.trim()) return res.status(400).json({ error: `${req.seg.unit} name required` });
+  const college = await College.create({ name, city, notes, segment: req.seg.slug });
   const rows = contacts.filter((c) => c.name || c.email || c.linkedinUrl || c.role);
   if (rows.length) await Contact.insertMany(rows.map((c) => ({ ...c, collegeId: college._id })));
   res.json(college);
@@ -84,7 +125,7 @@ router.delete('/contacts/:id', wrap(async (req, res) => {
 // mark next step sent
 router.post('/contacts/:id/sent', wrap(async (req, res) => {
   const { channel, date } = req.body;
-  const settings = await getSettings();
+  const settings = await getSettings(req.seg.slug);
   const c = await Contact.findById(req.params.id);
   const f = trackField(channel);
   if (c[f].length >= trackSteps(settings, channel).length) return res.status(400).json({ error: 'All steps already sent' });
@@ -96,7 +137,7 @@ router.post('/contacts/:id/sent', wrap(async (req, res) => {
 // edit date of an already-sent step
 router.patch('/contacts/:id/sent', wrap(async (req, res) => {
   const { channel, index, date } = req.body;
-  const settings = await getSettings();
+  const settings = await getSettings(req.seg.slug);
   const c = await Contact.findById(req.params.id);
   const f = trackField(channel);
   if (index < 0 || index >= c[f].length) return res.status(400).json({ error: 'Step not sent yet' });
@@ -107,7 +148,7 @@ router.patch('/contacts/:id/sent', wrap(async (req, res) => {
 
 // undo last sent step
 router.delete('/contacts/:id/sent', wrap(async (req, res) => {
-  const settings = await getSettings();
+  const settings = await getSettings(req.seg.slug);
   const c = await Contact.findById(req.params.id);
   c[trackField(req.query.channel)].pop();
   await c.save();
@@ -117,7 +158,7 @@ router.delete('/contacts/:id/sent', wrap(async (req, res) => {
 // reply / handle personally / resume
 router.post('/contacts/:id/status', wrap(async (req, res) => {
   const { status, note } = req.body;
-  const settings = await getSettings();
+  const settings = await getSettings(req.seg.slug);
   const c = await Contact.findById(req.params.id);
   c.status = status;
   if (note !== undefined) c.replyNote = note;
@@ -127,11 +168,11 @@ router.post('/contacts/:id/status', wrap(async (req, res) => {
 }));
 
 // ---------- today ----------
-async function buildToday(settings) {
-  const colleges = await College.find().lean();
+async function buildToday(req, settings) {
+  const colleges = await segColleges(req).lean();
   const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
   const cowner = Object.fromEntries(colleges.map((c) => [String(c._id), c.owner || '']));
-  const contacts = await Contact.find({ status: 'active' }).lean();
+  const contacts = await segContacts(req, { status: 'active' });
   const items = [];
   for (const raw of contacts) {
     const c = decorate(raw, settings);
@@ -161,18 +202,18 @@ async function buildToday(settings) {
   return items;
 }
 
-router.get('/today', wrap(async (req, res) => res.json(await buildToday(await getSettings()))));
+router.get('/today', wrap(async (req, res) => res.json(await buildToday(req, await getSettings(req.seg.slug)))));
 
 // steps marked sent today (latest step per channel) so they can be undone from the Today tab
 router.get('/today/done', wrap(async (req, res) => {
-  const settings = await getSettings();
-  const colleges = await College.find().lean();
+  const settings = await getSettings(req.seg.slug);
+  const colleges = await segColleges(req).lean();
   const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
   const cowner = Object.fromEntries(colleges.map((c) => [String(c._id), c.owner || '']));
   const now = new Date();
   const isToday = (d) => d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
   const out = [];
-  for (const c of await Contact.find().lean()) {
+  for (const c of await segContacts(req)) {
     for (const [channel, sent, steps] of [['email', c.emailSent, settings.emailSteps], ['linkedin', c.linkedinSent, settings.linkedinSteps]]) {
       if (!sent || !sent.length || !isToday(new Date(sent[sent.length - 1]))) continue;
       out.push({
@@ -187,17 +228,17 @@ router.get('/today/done', wrap(async (req, res) => {
 
 // prompt for Claude Desktop (Gmail) covering the emails due today (optionally for one college)
 router.post('/prompt/emails', wrap(async (req, res) => {
-  const settings = await getSettings();
+  const settings = await getSettings(req.seg.slug);
   const { senderName, college } = req.body || {};
-  const items = (await buildToday(settings)).filter((i) => !college || i.college === college);
+  const items = (await buildToday(req, settings)).filter((i) => !college || i.college === college);
   res.json(buildEmailPrompt(items, settings.emailSteps, senderName));
 }));
 
 // ---------- replied list ----------
 router.get('/replied', wrap(async (req, res) => {
-  const colleges = await College.find().lean();
+  const colleges = await segColleges(req).lean();
   const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
-  const contacts = await Contact.find({ status: { $ne: 'active' } }).sort({ repliedAt: -1 }).lean();
+  const contacts = await segContacts(req, { status: { $ne: 'active' } }, { repliedAt: -1 });
   res.json(contacts.map((c) => ({ ...c, college: cname[String(c.collegeId)] || '?' })));
 }));
 
@@ -211,8 +252,8 @@ router.post('/import', wrap(async (req, res) => {
     const cn = (r.college || '').trim();
     if (!cn) continue;
     if (!cache[cn.toLowerCase()]) {
-      let col = await College.findOne({ name: new RegExp(`^${cn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
-      if (!col) { col = await College.create({ name: cn }); colleges++; }
+      let col = await College.findOne({ segment: req.seg.slug, name: new RegExp(`^${cn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
+      if (!col) { col = await College.create({ name: cn, segment: req.seg.slug }); colleges++; }
       cache[cn.toLowerCase()] = col;
     }
     const collegeId = cache[cn.toLowerCase()]._id;
@@ -244,10 +285,10 @@ router.get('/search', wrap(async (req, res) => {
   if (found) q = found[0];
   if (q.length < 2) return res.json([]);
   const ql = normLink(q);
-  const settings = await getSettings();
-  const colleges = await College.find().lean();
+  const settings = await getSettings(req.seg.slug);
+  const colleges = await segColleges(req).lean();
   const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
-  const contacts = await Contact.find().lean();
+  const contacts = await segContacts(req);
   const hits = contacts.filter((c) =>
     [c.name, c.email, c.role, cname[String(c.collegeId)]].some((v) => String(v || '').toLowerCase().includes(q)) ||
     normLink(c.linkedinUrl).includes(ql));

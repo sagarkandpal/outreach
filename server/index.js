@@ -3,7 +3,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const express = require('express');
 const mongoose = require('mongoose');
 const routes = require('./routes');
-const { getSettings, College, Contact } = require('./models');
+const { getSettings, ensureSegments, College, Contact } = require('./models');
 
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/botza_outreach';
@@ -36,7 +36,9 @@ if (!process.env.MONGO_URI) {
 mongoose
   .connect(MONGO_URI, { dbName: DB_NAME })
   .then(async () => {
-    await getSettings(); // creates default settings on first run
+    await ensureSegments(); // built-in segments (Colleges, Startups) + tag old colleges
+    await getSettings('college'); // creates default settings on first run
+    await getSettings('startup');
     const c = mongoose.connection;
     console.log(`Connected to DB "${c.name}" on ${c.host}  (${process.env.MONGO_URI ? 'cloud/.env' : 'LOCAL'})`);
     app.listen(PORT, () => console.log(`Botza tracker running: http://localhost:${PORT}`));
