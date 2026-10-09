@@ -193,9 +193,9 @@ async function renderToday() {
     box.innerHTML = `<div class="cards">${[...colleges].map(([name, people]) => `
       <div class="card tcard" data-card="${esc(name)}">
         <div class="tcard-head"><span class="tcard-title">${ic('school')}${esc(name.replace('[DEMO] ', ''))}</span>
-          ${[...people.values()].some((p) => p.tasks.some((t) => t.channel === 'email'))
-            ? `<span class="card-prompt"><input data-sender placeholder="Sender naam" value="${esc(savedSender())}" style="width:110px">
-                <button class="btn small" data-copycollege="${esc(name)}" title="Is college ke saare emails ka Claude prompt copy karo">${ic('copy')}Prompt</button></span>` : ''}
+          <span class="card-prompt"><input data-sender placeholder="Sender naam" value="${esc(savedSender())}" style="width:110px">
+            ${[...people.values()].some((p) => p.tasks.some((t) => t.channel === 'email'))
+              ? `<button class="btn small" data-copycollege="${esc(name)}" title="Is college ke saare emails ka Claude prompt copy karo">${ic('copy')}Prompt</button>` : ''}</span>
           <button class="btn primary small sentall" data-sentall="${esc(name)}">${ic('check')}Sab Bhej diya <span class="count">${[...people.values()].reduce((n, p) => n + p.tasks.length, 0)}</span></button></div>
         <div class="tcard-body">
         ${[...people.values()].map((p) => `
@@ -254,7 +254,10 @@ async function renderToday() {
     box.querySelectorAll('[data-msg]').forEach((b) => b.onclick = () => {
       const t = items.find((x) => x.contactId === b.dataset.msg && x.channel === 'linkedin');
       if (!t || !t.message) return toast('Settings me is step ka LinkedIn draft nahi hai');
-      navigator.clipboard.writeText(t.message);
+      const senderName = b.closest('.tcard').querySelector('[data-sender]').value.trim();
+      if (!senderName && /\{sender_name\}/.test(t.message)) return toast('Pehle sender naam likho');
+      try { localStorage.setItem('senderName', senderName); } catch {}
+      navigator.clipboard.writeText(t.message.replace(/\{sender_name\}/g, () => senderName));
       toast(`${t.stepLabel} copied ✓`);
     });
     box.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => { navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); });
@@ -570,7 +573,7 @@ async function renderSettings() {
         ${importNote ? `<p>${importNote}</p>` : ''}
       </div>
       <h3>✍️ Email drafts</h3>
-      <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{college}</code>, <code>{sender_name}</code> (Aaj ka kaam me college card ke "Sender naam" box se aata hai). College card ka "📋 Prompt" isi draft ko Claude ko dega.</p>
+      <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{college}</code>, <code>{sender_name}</code> (Aaj ka kaam me college card ke "Sender naam" box se aata hai — Email prompt aur LinkedIn 📋 dono me). College card ka "📋 Prompt" isi draft ko Claude ko dega.</p>
       ${drafts.email.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.email : 'Follow-up ' + i}</b>
         <label class="muted" style="margin-left:12px">📎 Attachment: <input data-attach="${i}" value="${esc(attachments[i] || '')}" placeholder="khali = seedha send; e.g. Demo video" style="width:240px"></label>
         <textarea data-draft="email:${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
