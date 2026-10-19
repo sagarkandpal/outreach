@@ -9,7 +9,7 @@ Hi {first_name},
 
 It's 9 pm. Someone is on {company}'s website, wondering about pricing or whether you work with companies like theirs. There's no one to ask, so they open a competitor's tab.
 
-Botza is an AI chatbot that answers visitors from your own knowledge base. It also works inside the company: HR uploads policy documents and employees ask the chatbot instead of messaging HR.
+[Botza](https://botza.panscience.ai/) is an AI chatbot that answers visitors from your own knowledge base. It also works inside the company: HR uploads policy documents and employees ask the chatbot instead of messaging HR.
 
 Would you be open to a 15-minute demo?
 
