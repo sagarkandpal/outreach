@@ -98,7 +98,7 @@ All the best to you and the team,
 const linkedinSteps = [
   {
     label: 'Connection Note', gapDays: 0,
-    draft: `Hi {first_name}, I'm {sender_name}, Entrepreneur in Residence at Botza AI. We build a chatbot that answers website visitors and HR questions from a company's own documents. I'd like to connect and hear how {company} handles website enquiries.`,
+    draft: `Hi {first_name}, I'm {sender_name}, Entrepreneur in Residence at Botza AI (https://botza.panscience.ai/). We build a chatbot that answers website visitors and HR questions from a company's own documents. I'd like to connect and hear how {company} handles website enquiries.`,
   },
   {
     label: 'Follow-up 1', gapDays: 2,
