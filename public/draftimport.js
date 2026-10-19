@@ -11,20 +11,20 @@ FORMAT:
 
 RULES:
 - Draft ka text document se hu-ba-hu copy karo. Kuch summarize, rewrite, translate ya improve mat karo. Line breaks aur paragraphs waise hi rakho.
-- Recipient ke naam (jaise "Hi Rahul") ki jagah \`{first_name}\` likho, aur college / university ke naam ki jagah \`{college}\`. Baaki text ko mat chhedo.
+- Recipient ke naam (jaise "Hi Rahul") ki jagah \`{first_name}\` likho, aur company / college / university ke naam ki jagah \`{company}\`. Baaki text ko mat chhedo.
 - Agar kisi step ka draft document mein nahi hai to uski heading mat likho (khali mat chhodo, guess mat karo).
 - Koi extra heading, intro, explanation ya comment mat jodo.
 
 EXAMPLE:
 \`\`\`
 ### EMAIL | Primary Email
-Subject: Botza x {college}
+Subject: Botza x {company}
 
 Hi {first_name},
 ...
 
 ### EMAIL | Follow-up 1
-Subject: Re: Botza x {college}
+Subject: Re: Botza x {company}
 
 Hi {first_name},
 ...

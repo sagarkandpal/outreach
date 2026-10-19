@@ -212,7 +212,7 @@ async function buildToday(req, settings, onlyChannel, now = new Date(), pre) {
       const message = channel === 'linkedin'
         ? String(steps[i].draft || '').trim()
             .replace(/\{first_name\}/g, firstName(c.name))
-            .replace(/\{college\}/g, college.replace('[DEMO] ', ''))
+            .replace(/\{(?:college|company)\}/g, () => college.replace('[DEMO] ', ''))
         : '';
       items.push({
         contactId: c._id, college, owner: cowner[String(c.collegeId)] || '', role: c.role, name: c.name,
@@ -307,7 +307,7 @@ router.post('/prompt/emails', wrap(async (req, res) => {
   const settings = await getSettings(req.seg.slug);
   const { senderName, college } = req.body || {};
   const items = (await buildToday(req, settings)).filter((i) => !college || i.college === college);
-  res.json(buildEmailPrompt(items, settings.emailSteps, senderName));
+  res.json(buildEmailPrompt(items, settings.emailSteps, senderName, req.seg.unit));
 }));
 
 // ---------- finished list: everyone whose Email or LinkedIn steps are all sent (candidates to delete for good) ----------

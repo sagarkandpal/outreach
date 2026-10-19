@@ -9,7 +9,7 @@ function firstName(full) {
 
 // items: output of /today (email items only are used). steps: settings.emailSteps
 // senderName: replaces {sender_name} in drafts (optional; drafts without the placeholder are unaffected)
-function buildEmailPrompt(items, steps, senderName) {
+function buildEmailPrompt(items, steps, senderName, unit = 'College') {
   const sender = String(senderName || '').trim();
   const emailItems = items.filter((i) => i.channel === 'email');
   const skipped = [];
@@ -35,14 +35,14 @@ function buildEmailPrompt(items, steps, senderName) {
 - Mode "SEND" wale recipients ko email seedha bhej do.
 - Mode "DRAFT_ONLY" wale recipients ko email BHEJNA NAHI hai. Unke liye sirf Gmail mein draft banao (same subject/body, recipient set), kyunki main attachment khud lagaunga. Draft ka link connector ke create_draft result ke \`viewUrl\` field se hu-ba-hu copy karo (khud se link mat banao). Agar \`viewUrl\` na mile to link khali chhod do aur note mein likho.` : '';
   const tableRule = hasDraftOnly
-    ? 'columns: # | College | Name | Email | Step | Action (Sent / Draft / Failed) | Draft link (clickable) | Attachment lagana hai. SEND wale rows mein Action = Sent, link aur attachment khali. DRAFT_ONLY wale rows mein Action = Draft, viewUrl se mila link do aur "attach:" ke baad likha attachment ka naam likho.'
-    : 'columns: # | College | Name | Email | Step | Action (Sent / Failed) | Note.';
+    ? `columns: # | ${unit} | Name | Email | Step | Action (Sent / Draft / Failed) | Draft link (clickable) | Attachment lagana hai. SEND wale rows mein Action = Sent, link aur attachment khali. DRAFT_ONLY wale rows mein Action = Draft, viewUrl se mila link do aur "attach:" ke baad likha attachment ka naam likho.`
+    : `columns: # | ${unit} | Name | Email | Step | Action (Sent / Failed) | Note.`;
 
   const prompt = ready.length ? `Tumhare paas mera Gmail connected hai. Neeche recipients ki list hai. Har recipient ke "Step" wala draft email uske "Mode" ke hisaab se handle karo.
 
 Rules:
 - Har recipient ko sirf uske Step ka draft bhejo (Primary ya Follow-up N). Kisi aur step ka draft mat bhejna.${draftRules}
-- Draft ke andar {first_name} ki jagah recipient ka First name, aur {college} ki jagah College ka naam daalo. Baaki draft ka text bilkul same rakho, kuch add/edit mat karo.${senderRule}
+- Draft ke andar {first_name} ki jagah recipient ka First name, aur {college} / {company} ki jagah ${unit} ka naam daalo. Baaki draft ka text bilkul same rakho, kuch add/edit mat karo.${senderRule}
 - Draft ki pehli line "Subject:" se shuru ho to wo email ka subject hai, baaki body hai.
 - Draft mein jahan [text](url) jaisa markdown link ho, use email mein clickable hyperlink bana ke bhejo: email ki HTML body use karo (har paragraph <p> mein, link <a href="url">text</a>), plain text body mein markdown kabhi mat bhejo. Agar connector HTML body support nahi karta to us email ko bhejo mat, sirf Gmail draft banao aur table mein "Failed: HTML body unsupported" likho.
 - Har email alag alag bhejo (koi CC/BCC ya group mail nahi).
@@ -55,7 +55,7 @@ Saare emails${hasDraftOnly ? '/drafts' : ''} ke baad, aakhri message mein sirf e
 ## Drafts
 ${drafts}
 
-## Recipients (# | College | First name | Email | Step | Mode)
+## Recipients (# | ${unit} | First name | Email | Step | Mode)
 ${rows}
 ` : '';
 

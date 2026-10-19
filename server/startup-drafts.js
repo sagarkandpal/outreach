@@ -1,4 +1,4 @@
-// Default sequence for the "Startup" segment. {college} = company name in this segment.
+// Default sequence for the "Startup" segment. {company} = the company name (the old {college} placeholder still works too).
 // Steps with an `attachment` note are DRAFT_ONLY for Claude: the sender fills the file / link by hand.
 const emailSteps = [
   {
@@ -7,7 +7,7 @@ const emailSteps = [
 
 Hi {first_name},
 
-It's 9 pm. Someone is on {college}'s website, wondering about pricing or whether you work with companies like theirs. There's no one to ask, so they open a competitor's tab.
+It's 9 pm. Someone is on {company}'s website, wondering about pricing or whether you work with companies like theirs. There's no one to ask, so they open a competitor's tab.
 
 Botza is an AI chatbot that answers visitors from your own knowledge base. It also works inside the company: HR uploads policy documents and employees ask the chatbot instead of messaging HR.
 
@@ -51,8 +51,8 @@ Thanks,
 {sender_name}`,
   },
   {
-    label: 'Follow-up 3', gapDays: 2, attachment: "Link to {college}'s website with Botza (paste [Website Link With Botza])",
-    draft: `Subject: Botza on {college}'s website, ready to try
+    label: 'Follow-up 3', gapDays: 2, attachment: "Link to {company}'s website with Botza (paste [Website Link With Botza])",
+    draft: `Subject: Botza on {company}'s website, ready to try
 
 Hi {first_name},
 
@@ -67,7 +67,7 @@ Regards,
   },
   {
     label: 'Follow-up 4', gapDays: 2, attachment: 'Feature comparison sheet',
-    draft: `Subject: Will it cover what {college} needs?
+    draft: `Subject: Will it cover what {company} needs?
 
 Hi {first_name},
 
@@ -86,7 +86,7 @@ Best,
 
 {first_name}, this is my last note, I promise.
 
-Maybe quick answers for website visitors, or fewer repeat questions for HR, just isn't a priority at {college} right now. That's completely reasonable.
+Maybe quick answers for website visitors, or fewer repeat questions for HR, just isn't a priority at {company} right now. That's completely reasonable.
 
 If it becomes one later, reply here and I'll set up a short demo. If you'd prefer I don't write again, just say so.
 
@@ -98,17 +98,21 @@ All the best to you and the team,
 const linkedinSteps = [
   {
     label: 'Connection Note', gapDays: 0,
-    draft: `Hi {first_name}, I'm {sender_name}, Entrepreneur in Residence at Botza AI. We build a chatbot that answers website visitors and HR questions from a company's own documents. I'd like to connect and hear how {college} handles website enquiries.`,
+    draft: `Hi {first_name}, I'm {sender_name}, Entrepreneur in Residence at Botza AI. We build a chatbot that answers website visitors and HR questions from a company's own documents. I'd like to connect and hear how {company} handles website enquiries.`,
   },
   {
     label: 'Follow-up 1', gapDays: 2,
     draft: `{first_name}, thanks for connecting. Rather than explain Botza, I'd like you to see it. It answers website visitors' questions from a company's own documents, and there's an HR version for employees too.
 
-Short video here: [Demo Video Link]`,
+Short video here: [Demo Video Link]
+
+If it looks relevant for {company}, would you be open to a 15-minute demo this week?`,
   },
   {
     label: 'Follow-up 2', gapDays: 2,
-    draft: `{first_name}, I went ahead and put Botza on a version of your website. Ask it something a visitor might ask and see what comes back: [Website Link With Botza]`,
+    draft: `{first_name}, I went ahead and put Botza on a version of your website. Ask it something a visitor might ask and see what comes back: [Website Link With Botza]
+
+If you like what you see, I can walk you through how it would work for {company}. Open to a quick 15-minute call?`,
   },
 ];
 
