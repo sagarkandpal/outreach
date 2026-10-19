@@ -71,15 +71,18 @@ document.getElementById('tabs').addEventListener('click', (e) => {
 
 async function render() {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === currentTab));
-  settings = await api('GET', '/settings');
+  if (!settings || currentTab === 'settings') settings = await api('GET', '/settings'); // cached: only the Settings tab changes it
   refreshBadges();
-  await ({ today: renderToday, colleges: renderColleges, replied: renderReplied, assign: renderAssign, add: renderAdd, settings: renderSettings }[currentTab])();
+  await ({ today: renderTodayTab, colleges: renderColleges, replied: renderReplied, finished: renderFinished, history: renderHistory, assign: renderAssign, add: renderAdd, settings: renderSettings }[currentTab])();
 }
 
 async function refreshBadges() {
-  const [today, replied, colleges] = await Promise.all([api('GET', '/today'), api('GET', '/replied'), api('GET', '/colleges')]);
-  document.getElementById('todayCount').textContent = today.length;
+  const [today, replied, colleges, finished] = await Promise.all([api('GET', '/today/counts'), api('GET', '/replied'), api('GET', '/colleges'), api('GET', '/finished')]);
+  document.getElementById('todayCount').textContent = today.email + today.linkedin;
   document.getElementById('repliedCount').textContent = replied.length;
+  const fb = document.getElementById('finishedCount');
+  fb.textContent = finished.length;
+  fb.classList.toggle('grey', !finished.length);
   const unassigned = colleges.filter((c) => !c.owner).length;
   const ab = document.getElementById('assignCount');
   ab.textContent = unassigned;
@@ -104,9 +107,7 @@ async function renderToday() {
       <div class="filter">Follow-up:
         <select id="fStep"></select>
       </div>
-      <div class="filter">Dikhao:
-        <select id="fChannel"><option value="">Email + LinkedIn</option><option value="email">Sirf Email</option><option value="linkedin">Sirf LinkedIn</option></select>
-      </div>
+      <select id="fChannel" hidden><option value=""></option></select>
     </div>
     <div class="help"><b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Email ka agla follow-up apne aap 2 din baad yahin aa jayega. Card me <b>✓ Sab Bhej diya</b> dabake us ${esc(seg.unit.toLowerCase())} ke saare tasks ek saath mark karo. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis ${esc(seg.unit.toLowerCase())} ka hai.</div>
     <div id="todayCards"></div>
@@ -136,7 +137,7 @@ async function renderToday() {
     const box = document.getElementById('ownerTabs');
     box.innerHTML = tabs.map(([k, l, c]) => `<button class="${todayOwner === k ? 'active' : ''}" data-owner="${k}">${l} <span class="badge ${todayOwner === k ? '' : 'grey'}">${c}</span></button>`).join('');
     box.querySelectorAll('[data-owner]').forEach((b) => b.onclick = () => {
-      todayOwner = b.dataset.owner; lsSet('todayOwner', todayOwner);
+      todayOwner = todayOwner === b.dataset.owner ? '' : b.dataset.owner; lsSet('todayOwner', todayOwner);
       drawOwnerTabs(); draw(); drawDone(); updateStats();
     });
   };
@@ -268,6 +269,7 @@ async function renderToday() {
     box.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => { navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); });
   };
   const sel = document.getElementById('fChannel');
+  todayFilter = ''; // Email and LinkedIn are separate sub-tabs, no channel filter
   sel.value = todayFilter;
   sel.onchange = () => { todayFilter = sel.value; draw(); drawDone(); };
   // step dropdown: Sab / Primary / Follow-up 1, 2, 3 ... (only steps that actually have tasks today)
@@ -282,11 +284,234 @@ async function renderToday() {
   drawDone();
 }
 
+// ---------- LINKEDIN (startups): follow-ups, accept check, notes ----------
+// Startups only: "Aaj ka kaam" has two separate sub-tabs, Email and LinkedIn
+let todaySub = 'email';
+let liData = null; // last LinkedIn payload, reused when only the owner tab changes
+function drawSubTabs(counts) {
+  const tabs = [['email', 'Email', counts.email], ['linkedin', 'LinkedIn', counts.linkedin]];
+  view.insertAdjacentHTML('afterbegin', `<div class="owner-tabs" id="subTabs">${tabs.map(([k, l, c]) => `<button class="${todaySub === k ? 'active' : ''}" data-sub="${k}">${l} <span class="badge ${todaySub === k ? '' : 'grey'}">${c}</span></button>`).join('')}</div>`);
+  view.querySelectorAll('[data-sub]').forEach((b) => b.onclick = () => guard(async () => { todaySub = b.dataset.sub; await renderTodayTab(); }));
+}
+// Left side-bar: just the people (Arjun / Sagar); Email / LinkedIn pills stay on top of the content on the right
+function layoutSide() {
+  const own = document.getElementById('ownerTabs');
+  if (!own) return;
+  const main = document.createElement('div');
+  main.className = 'side-main';
+  while (view.firstChild) main.appendChild(view.firstChild);
+  const aside = document.createElement('aside');
+  aside.className = 'side';
+  const label = (t) => { const d = document.createElement('div'); d.className = 'side-label'; d.textContent = t; return d; };
+  aside.append(label('Kiska kaam'), own);
+  const wrap = document.createElement('div');
+  wrap.className = 'side-layout';
+  wrap.append(aside, main);
+  view.appendChild(wrap);
+}
+async function renderTodayTab(reuse) {
+  if (todaySub === 'linkedin') {
+    if (!(reuse && liData)) liData = await api('GET', '/linkedin/today');
+    renderLinkedin(liData);
+    drawSubTabs({ email: liData.emailCount, linkedin: liData.notes.length + liData.followups.length });
+    layoutSide();
+  } else {
+    const counts = api('GET', '/today/counts'); // fetched in parallel with the list
+    await renderToday();
+    drawSubTabs(await counts);
+    layoutSide();
+  }
+}
+
+function renderLinkedin(data) {
+  const { notes, followups, pending, others } = data;
+  const n = notes.filter(ownerMatch), f = followups.filter(ownerMatch);
+  const pend = pending.filter(ownerMatch), oth = others.filter(ownerMatch); // Accept check also follows the Arjun / Sagar tab
+  const reach = (u) => (u ? `<a href="${esc(safeUrl(u))}" target="_blank" rel="noopener">LinkedIn profile kholo ${ic('ext')}</a>` : '<span class="muted">link nahi hai</span>');
+  const taskRow = (t) => `
+    <div class="task ${t.state}">
+      <div class="task-main">
+        <div class="task-title"><b>${esc(t.name || '—')}</b> <small class="muted">${esc(t.role)} · ${esc(t.college.replace('[DEMO] ', ''))}</small>
+          <span class="step">${esc(t.stepLabel)}</span>
+          ${t.state === 'overdue' ? `<span class="tag overdue">${t.daysLate} din late</span>` : `<span class="tag due">Aaj</span>`}</div>
+        <div class="task-reach">${reach(t.linkedinUrl)}</div>
+      </div>
+      <button class="btn small" data-copyopen="${t.contactId}" data-kind="${t.isFirst ? 'notes' : 'followups'}">${ic('copy')}Copy + Profile</button>
+      <button class="btn primary bigbtn" data-sent="${t.contactId}">${ic('check')}Bhej diya</button>
+    </div>`;
+  const pendRow = (p, extra) => `
+    <div class="task ${p.daysAgo >= 7 ? 'overdue' : ''}" ${extra ? 'hidden data-other' : ''} data-q="${esc((p.name + ' ' + p.role + ' ' + p.college).toLowerCase())}">
+      <label class="task-main" style="display:flex;gap:8px;align-items:center;cursor:pointer">
+        <input type="checkbox" data-conn="${p.contactId}">
+        <div><div class="task-title"><b>${esc(p.name || '—')}</b> <small class="muted">${esc(p.role)} · ${esc(p.college.replace('[DEMO] ', ''))}</small>
+          ${extra ? '<span class="tag due">note abhi mark nahi hua</span>' : `<span class="tag ${p.daysAgo >= 7 ? 'overdue' : 'due'}">${p.daysAgo} din pehle bheja</span>`}</div>
+        <div class="task-reach">${reach(p.linkedinUrl)}</div></div>
+      </label>
+      ${extra ? '' : `<button class="link" data-giveup="${p.contactId}" data-who="${esc(p.name || p.role)}">Accept nahi hua, band karo</button>`}
+    </div>`;
+  const section = (num, title, desc, rows, count) => `<div class="card li-sec"><div class="li-head"><span class="li-num">${num}</span><div><h2>${title} <span class="badge ${count ? '' : 'grey'}">${count}</span></h2><p>${desc}</p></div></div><div class="li-body">${rows}</div></div>`;
+  view.innerHTML = `
+    <div class="owner-tabs" id="ownerTabs"></div>
+    <div class="stats"><div class="filter">Aapka naam (message me lagega): <input id="liSender" placeholder="Sender naam" value="${esc(savedSender())}" style="width:130px"></div></div>
+    ${section(1, 'Connection Note bhejo', 'Naye logo ko LinkedIn par connection request aur note bhejo. Bhej diya dabate hi wo Step 2 me chale jate hain.', n.length ? n.map(taskRow).join('') : '<div class="card-done">Koi naya note pending nahi</div>', n.length)}
+    ${section(2, 'Kisne accept kiya? Connected tick karo', 'Jinko note bheja unme se jo accept kare, search karke ya tick karke Connected mark karo. Mark karte hi unka follow-up Step 3 me aa jayega.',
+      `<div style="margin:6px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="pendSearch" type="search" placeholder="Naam ya ${esc(seg.unit.toLowerCase())} dhundo..." autocomplete="off" style="min-width:220px"><button class="btn primary small" id="bulkConn">${ic('check')}Selected ko Connected mark karo</button></div>
+      ${pend.length ? pend.map((p) => pendRow(p)).join('') : '<div class="card-done" id="noPend">Koi pending connection nahi, upar search karke kisi ko bhi Connected mark kar sakte ho</div>'}
+      ${oth.map((p) => pendRow(p, true)).join('')}`, pend.length)}
+    ${section(3, 'Follow-up message bhejo', 'Sirf connected logo ke liye. Copy + Profile dabao, message paste karke bhejo, phir Bhej diya dabao.', f.length ? f.map(taskRow).join('') : '<div class="card-done">Koi follow-up pending nahi</div>', f.length)}`;
+
+  const all = notes.concat(followups);
+  const own = (o) => all.filter((i) => (o === 'none' ? !i.owner : i.owner === o)).length;
+  const tabs = [['', 'Sab', all.length], ['arjun', 'Arjun', own('arjun')], ['sagar', 'Sagar', own('sagar')]];
+  if (own('none')) tabs.push(['none', 'Unassigned', own('none')]);
+  const box = document.getElementById('ownerTabs');
+  box.innerHTML = tabs.map(([k, l, c]) => `<button class="${todayOwner === k ? 'active' : ''}" data-owner="${k}">${l} <span class="badge ${todayOwner === k ? '' : 'grey'}">${c}</span></button>`).join('');
+  box.querySelectorAll('[data-owner]').forEach((b) => b.onclick = () => { todayOwner = todayOwner === b.dataset.owner ? '' : b.dataset.owner; lsSet('todayOwner', todayOwner); guard(() => renderTodayTab(true)); });
+
+  view.querySelectorAll('[data-copyopen]').forEach((b) => b.onclick = () => {
+    const t = (b.dataset.kind === 'notes' ? notes : followups).find((x) => x.contactId === b.dataset.copyopen);
+    const senderName = document.getElementById('liSender').value.trim();
+    if (!t) return;
+    if (!t.message) { if (t.linkedinUrl) window.open(safeUrl(t.linkedinUrl), '_blank', 'noopener'); return toast('Is step ka draft nahi hai (Settings me likho), profile khol diya'); }
+    if (!senderName && /\{sender_name\}/.test(t.message)) return toast('Pehle sender naam likho');
+    lsSet('senderName', senderName);
+    navigator.clipboard.writeText(t.message.replace(/\{sender_name\}/g, () => senderName));
+    if (t.linkedinUrl) window.open(safeUrl(t.linkedinUrl), '_blank', 'noopener');
+    toast(`${t.stepLabel} copied ✓`);
+  });
+  view.querySelectorAll('[data-sent]').forEach((b) => b.onclick = () => guard(async () => {
+    b.disabled = true;
+    try { await api('POST', `/contacts/${b.dataset.sent}/sent`, { channel: 'linkedin' }); } catch (e) { b.disabled = false; throw e; }
+    toast('Done'); render();
+  }));
+  const ps = document.getElementById('pendSearch');
+  if (ps) ps.oninput = () => {
+    const q = ps.value.trim().toLowerCase();
+    view.querySelectorAll('[data-q]').forEach((r) => {
+      const hit = !q || r.dataset.q.includes(q);
+      r.hidden = r.hasAttribute('data-other') ? !q || !hit : !hit; // un-marked contacts show only while searching
+    });
+  };
+  const bulk = document.getElementById('bulkConn');
+  if (bulk) bulk.onclick = () => guard(async () => {
+    const ids = [...view.querySelectorAll('[data-conn]:checked')].map((x) => x.dataset.conn);
+    if (!ids.length) return toast('Pehle koi select karo');
+    await api('POST', '/contacts/connected-bulk', { ids });
+    toast(`${ids.length} connected ✓`); render();
+  });
+  view.querySelectorAll('[data-giveup]').forEach((b) => b.onclick = () => guard(async () => {
+    if (!confirm(`${b.dataset.who} ke follow-ups band karun?`)) return;
+    await api('POST', `/contacts/${b.dataset.giveup}/status`, { status: 'done' });
+    toast('Band kar diya'); render();
+  }));
+}
+
+// ---------- FINISHED: all steps sent, delete for good ----------
+async function renderFinished() {
+  const list = await api('GET', '/finished');
+  const email = list.filter((x) => x.emailDone), li = list.filter((x) => x.liDone);
+  const STATUS = { replied: 'Replied', handling_personally: 'Handling personally', done: 'Band' };
+  const row = (x, ch) => {
+    const mine = ch === 'email' ? { n: x.emailSent, t: x.emailTotal, last: x.emailLast } : { n: x.liSent, t: x.liTotal, last: x.liLast };
+    const otherDone = ch === 'email' ? x.liDone : x.emailDone;
+    const other = ch === 'email'
+      ? (x.liDone ? 'LinkedIn bhi poora' : x.liTotal > 1 ? `LinkedIn ${x.liSent}/${x.liTotal} baaki` : '')
+      : (x.emailDone ? 'Email bhi poora' : `Email ${x.emailSent}/${x.emailTotal} baaki`);
+    return `
+    <div class="task" data-q="${esc((x.name + ' ' + x.role + ' ' + x.college).toLowerCase())}">
+      <label class="task-main" style="display:flex;gap:10px;align-items:center;cursor:pointer">
+        <input type="checkbox" data-del="${x.contactId}">
+        <div><div class="task-title"><b>${esc(x.name || '—')}</b> <small class="muted">${esc(x.role)} · ${esc(x.college.replace('[DEMO] ', ''))}${x.owner ? ' · ' + esc(OWNERS[x.owner] || x.owner) : ''}</small>
+          <span class="tag due">${mine.n}/${mine.t} bheje${mine.last ? ', last ' + prettyDate(mine.last) : ''}</span>
+          ${other ? `<span class="tag ${otherDone ? 'due' : 'overdue'}">${esc(other)}</span>` : ''}
+          ${x.status !== 'active' ? `<span class="tag due">${esc(STATUS[x.status] || x.status)}</span>` : ''}</div></div>
+      </label>
+      <button class="btn danger small" data-delone="${x.contactId}" data-who="${esc(x.name || x.role)}">Delete</button>
+    </div>`;
+  };
+  const section = (title, desc, rows, count, ch) => `<div class="card li-sec" data-ch="${ch}"><div class="li-head"><span class="li-num">${ic(ch === 'email' ? 'mail' : 'linkedin')}</span><div><h2>${title} <span class="badge ${count ? '' : 'grey'}">${count}</span></h2><p>${desc}</p></div></div>
+    <div class="li-body">${count ? `<div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><label style="display:inline-flex;gap:6px;align-items:center;cursor:pointer;font-weight:600"><input type="checkbox" data-selall="${ch}">Select all</label><button class="btn danger small" data-delsel="${ch}">Selected ko delete karo</button><button class="btn danger small" data-delall="${ch}">Sab ${count} delete karo</button></div>${rows}` : '<div class="card-done">Abhi koi nahi</div>'}</div></div>`;
+  view.innerHTML = `
+    <div class="help"><b>Kya hai ye:</b> jinke saare steps ho chuke hain wo yahan aate hain. Ab unse aage kuch nahi bhejna, to yahin se <b>Delete</b> karke list saaf kar do. Delete hamesha ke liye hota hai, wapas nahi aata.</div>
+    ${section('Email poora ho gaya', `Primary email aur saare follow-ups bhej diye (${email[0] ? email[0].emailTotal : 'saare'} steps).`, email.map((x) => row(x, 'email')).join(''), email.length, 'email')}
+    ${section('LinkedIn poora ho gaya', 'Connection note aur saare follow-ups bhej diye.', li.map((x) => row(x, 'linkedin')).join(''), li.length, 'linkedin')}`;
+
+  const del = (ids, label, extra = '') => guard(async () => {
+    if (!ids.length) return toast('Pehle koi select karo');
+    if (!confirm(`${label} hamesha ke liye delete karun?${extra} Ye wapas nahi aayega.`)) return;
+    const r = await api('POST', '/contacts/delete-bulk', { ids });
+    toast(`${r.count} delete ho gaye${r.orgsRemoved ? `, ${r.orgsRemoved} khali ${r.orgsRemoved > 1 ? seg.unitPlural.toLowerCase() : seg.unit.toLowerCase()} bhi hata diye` : ''}`); render();
+  });
+  view.querySelectorAll('[data-delone]').forEach((b) => b.onclick = () => del([b.dataset.delone], `${b.dataset.who} ko`));
+  view.querySelectorAll('[data-selall]').forEach((a) => {
+    const boxes = () => [...a.closest('.li-sec').querySelectorAll('[data-del]')];
+    a.onchange = () => boxes().forEach((x) => { x.checked = a.checked; });
+    // keep "Select all" honest when single rows are ticked / unticked
+    a.closest('.li-sec').addEventListener('change', (e) => {
+      if (e.target.matches('[data-del]')) a.checked = boxes().every((x) => x.checked);
+    });
+  });
+  view.querySelectorAll('[data-delall]').forEach((b) => b.onclick = () => {
+    const ch = b.dataset.delall, arr = ch === 'email' ? email : li;
+    // contacts whose OTHER channel is still running would be deleted too: say so in the confirm
+    const risky = arr.filter((x) => (ch === 'email' ? x.liTotal > 1 && !x.liDone : !x.emailDone)).length;
+    del(arr.map((x) => x.contactId), `Sab ${arr.length} contact ko`, risky ? `\n\n${risky} ka doosra channel (${ch === 'email' ? 'LinkedIn' : 'Email'}) abhi baaki hai, wo bhi chala jayega.` : '');
+  });
+  view.querySelectorAll('[data-delsel]').forEach((b) => b.onclick = () => {
+    const ids = [...b.closest('.li-sec').querySelectorAll('[data-del]:checked')].map((x) => x.dataset.del);
+    del(ids, `${ids.length} contact ko`);
+  });
+}
+
+// ---------- HISTORY: every organisation reached out to, even after it is deleted from "Poora ho gaya" ----------
+async function renderHistory() {
+  const list = await api('GET', '/history');
+  const plural = seg.unitPlural.toLowerCase();
+  const gone = list.filter((x) => !x.live).length;
+  const row = (x) => `
+    <tr data-q="${esc((x.name + ' ' + x.city).toLowerCase())}">
+      <td class="who"><b>${esc(x.name.replace('[DEMO] ', ''))}</b>${x.city ? ` <small>${esc(x.city)}</small>` : ''}</td>
+      <td>${x.owner ? esc(OWNERS[x.owner] || x.owner) : '<span class="muted">—</span>'}</td>
+      <td>${x.reached || x.removed ? `${x.reached}${x.removed ? ` <small class="muted">(${x.removed} hata diye)</small>` : ''}` : '<span class="muted">—</span>'}</td>
+      <td>${x.first ? prettyDate(x.first) : '—'}</td>
+      <td>${x.last ? prettyDate(x.last) : '—'}</td>
+      <td>${x.live ? '<span class="tag due">Chal raha hai</span>' : '<span class="tag">Poora ho gaya, hata diya</span>'}</td>
+    </tr>`;
+  view.innerHTML = `
+    <div class="li-sec card"><div class="li-head"><span class="li-num">${ic('school')}</span><div><h2>History <span class="badge ${list.length ? '' : 'grey'}">${list.length}</span></h2>
+      <p>Jitne ${esc(plural)} ko aapne reach out kiya, wo sab yahan rehte hain. "Poora ho gaya" se delete karne par bhi yahan se nahi hatte. ${gone ? `<b>${gone}</b> ab app se hata diye gaye hain.` : ''}</p></div></div>
+      <div class="li-body">
+        <details style="margin:10px 0 4px"><summary style="cursor:pointer;font-weight:600">+ Pehle hata diye hue ${esc(plural)} history me jodo</summary>
+          <div style="margin-top:8px"><textarea id="histAdd" rows="6" placeholder="Ek line me ek naam" style="width:100%;max-width:520px"></textarea>
+            <div style="margin-top:6px"><button class="btn primary small" id="histAddBtn">History me jodo</button> <small class="muted">sirf naam judte hain, date aur contacts ka count khali rahega</small></div></div></details>
+        ${list.length ? `<div style="margin:8px 0"><input id="histSearch" type="search" placeholder="${esc(seg.unit)} ka naam dhundo..." autocomplete="off" style="min-width:260px"></div>
+        <div class="grid-wrap"><table class="grid">
+          <thead><tr><th>${esc(seg.unit)}</th><th>Owner</th><th>Contacts reach kiye</th><th>Pehla message</th><th>Last message</th><th>Status</th></tr></thead>
+          <tbody>${list.map(row).join('')}</tbody>
+        </table></div>` : '<div class="card-done">Abhi koi history nahi, jaise hi koi message bhejoge yahan dikhega</div>'}
+      </div></div>`;
+  document.getElementById('histAddBtn').onclick = () => guard(async () => {
+    const names = document.getElementById('histAdd').value.split('\n').map((x) => x.trim()).filter(Boolean);
+    if (!names.length) return toast('Pehle naam likho');
+    const r = await api('POST', '/history', { names });
+    toast(`${r.added} judh gaye${r.skipped ? `, ${r.skipped} pehle se app me hain` : ''}`); render();
+  });
+  const hs = document.getElementById('histSearch');
+  if (hs) hs.oninput = () => {
+    const q = hs.value.trim().toLowerCase();
+    view.querySelectorAll('tr[data-q]').forEach((r) => { r.hidden = !!q && !r.dataset.q.includes(q); });
+  };
+}
+
 // ---------- COLLEGES grid ----------
-function cellHtml(cell, channel, idx, contactId, label) {
+// accept: LinkedIn Connection Note only ('yes' = connected, 'no' = note sent, not accepted yet)
+function cellHtml(cell, channel, idx, contactId, label, accept) {
   const attr = `data-c="${contactId}" data-ch="${channel}" data-i="${idx}" data-s="${cell.state}" title="${esc(label)}"`;
   switch (cell.state) {
-    case 'sent': return `<button class="cell sent" ${attr} title="${esc(label)} — ${prettyDate(cell.date)}">✓ ${prettyDate(cell.date)}</button>`;
+    case 'sent': {
+      const note = accept === 'yes' ? ' — accept ho gaya' : accept === 'no' ? ' — abhi accept nahi hua' : '';
+      return `<button class="cell sent${accept === 'no' ? ' noaccept' : ''}" ${attr} title="${esc(label)} — ${prettyDate(cell.date)}${note}">✓ ${prettyDate(cell.date)}</button>`;
+    }
     case 'due': return `<button class="cell due" ${attr}>Aaj</button>`;
     case 'overdue': return `<button class="cell overdue" ${attr}>${cell.days}d late</button>`;
     case 'wait': return `<button class="cell wait" ${attr}>${cell.days}d baad</button>`;
@@ -300,7 +525,7 @@ async function renderColleges() {
   if (!colleges.length) { view.innerHTML = `<div class="card empty">Abhi koi ${esc(seg.unit.toLowerCase())} nahi. "${esc(seg.unit)} add karo" me jaake add ya import karo.</div>`; return; }
   view.innerHTML = `
     <div class="legend">
-      <span><b style="color:var(--green)">✓ date</b> bheja</span><span><b style="color:var(--amber)">Aaj</b> aaj bhejna hai</span>
+      <span><b style="color:var(--green)">✓ date</b> bheja (LinkedIn note: accept ho gaya)</span><span><b style="color:var(--blue)">✓ date</b> LinkedIn note bheja, accept nahi hua</span><span><b style="color:var(--amber)">Aaj</b> aaj bhejna hai</span>
       <span><b style="color:var(--red)">Nd late</b> deri</span><span><b>Nd baad</b> abhi wait (click = jaldi bheja)</span>
       <span>⏸ reply aaya / ruka</span><span>Sent cell click = date badlo (last wale pe "x" = undo)</span>
     </div>
@@ -319,7 +544,7 @@ async function renderColleges() {
               <small>${esc(c.email)} ${c.linkedinUrl ? `· <a href="${esc(safeUrl(c.linkedinUrl))}" target="_blank" rel="noopener">LinkedIn</a>` : ''}</small>
               ${c.status !== 'active' ? `<small><span class="tag due">${c.status === 'replied' ? 'Replied' : 'Handling personally'}</span></small>` : ''}</td>
             ${c.emailCells.map((cell, i) => `<td>${cellHtml(cell, 'email', i, c._id, settings.emailSteps[i].label)}</td>`).join('')}
-            ${c.linkedinCells.map((cell, i) => `<td>${cellHtml(cell, 'linkedin', i, c._id, settings.linkedinSteps[i].label)}</td>`).join('')}
+            ${c.linkedinCells.map((cell, i) => `<td>${cellHtml(cell, 'linkedin', i, c._id, settings.linkedinSteps[i].label, i === 0 ? (c.linkedinConnectedAt ? 'yes' : 'no') : '')}</td>`).join('')}
             <td style="white-space:nowrap">
               ${c.status === 'active'
                 ? `<button class="btn" data-reply="${c._id}">Replied</button>`
@@ -708,6 +933,7 @@ function enterSegment(chosen) {
   todayStep = ''; todayFilter = '';
   landing.hidden = true; appEl.hidden = false;
   document.getElementById('segName').textContent = seg.name;
+  todaySub = 'email'; settings = null; liData = null;
   document.getElementById('tabColleges').textContent = `Saare ${seg.unitPlural.toLowerCase()}`;
   document.getElementById('tabAdd').textContent = `${seg.unit} add karo`;
   document.getElementById('q').value = '';

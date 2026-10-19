@@ -47,6 +47,8 @@ const contactSchema = new mongoose.Schema(
     // dates of steps already sent, in order (index = step index)
     emailSent: { type: [Date], default: [] },
     linkedinSent: { type: [Date], default: [] },
+    // startups: when the connection request was accepted (follow-ups start after this)
+    linkedinConnectedAt: Date,
     replyNote: { type: String, default: '' },
     repliedAt: Date,
   },
@@ -98,7 +100,24 @@ async function getSettings(slug = 'college') {
   return s;
 }
 
+// organisations that were reached out to and later deleted from "Poora ho gaya"; the History tab keeps them
+const historySchema = new mongoose.Schema(
+  {
+    segment: { type: String, required: true },
+    key: { type: String, required: true }, // lower-cased organisation name
+    name: String,
+    city: { type: String, default: '' },
+    owner: { type: String, default: '' },
+    contactsReached: { type: Number, default: 0 }, // deleted contacts that had at least one message sent
+    firstSentAt: Date,
+    lastSentAt: Date,
+  },
+  { timestamps: true }
+);
+historySchema.index({ segment: 1, key: 1 }, { unique: true });
+
 module.exports = {
+  History: mongoose.model('History', historySchema),
   Settings,
   Segment,
   getSettings,
