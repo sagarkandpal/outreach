@@ -117,6 +117,8 @@ const historySchema = new mongoose.Schema(
 historySchema.index({ segment: 1, key: 1 }, { unique: true });
 
 module.exports = {
+  settingsKey,
+  BUILT_IN_SEGMENTS: DEFAULT_SEGMENTS.map((s) => s.slug),
   History: mongoose.model('History', historySchema),
   Settings,
   Segment,

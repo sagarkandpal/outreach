@@ -1,5 +1,5 @@
 const express = require('express');
-const { College, Contact, Segment, History, getSettings, getSegment } = require('./models');
+const { College, Contact, Segment, History, Settings, settingsKey, BUILT_IN_SEGMENTS, getSettings, getSegment } = require('./models');
 const { decorate } = require('./due');
 const { buildEmailPrompt, firstName } = require('./prompt');
 
@@ -37,6 +37,20 @@ router.post('/segments', wrap(async (req, res) => {
   const unitPlural = String(req.body.unitPlural || '').trim() || (/y$/i.test(unit) ? unit.slice(0, -1) + 'ies' : unit + 's');
   const order = await Segment.countDocuments();
   res.json(await Segment.create({ slug, name, unit, unitPlural, order }));
+}));
+
+// delete a custom segment with everything in it (the built-in Colleges / Startups are recreated on every start, so they stay)
+router.delete('/segments/:slug', wrap(async (req, res) => {
+  const slug = req.params.slug;
+  if (BUILT_IN_SEGMENTS.includes(slug)) return res.status(400).json({ error: 'Ye built-in segment hai, ise delete nahi kar sakte' });
+  if (!(await Segment.exists({ slug }))) return res.status(404).json({ error: 'Segment nahi mila' });
+  const orgIds = (await College.find({ segment: slug }, '_id').lean()).map((c) => c._id);
+  const contacts = await Contact.deleteMany({ collegeId: { $in: orgIds } });
+  await College.deleteMany({ segment: slug });
+  await Settings.deleteOne({ key: settingsKey(slug) });
+  await History.deleteMany({ segment: slug });
+  await Segment.deleteOne({ slug });
+  res.json({ ok: true, orgs: orgIds.length, contacts: contacts.deletedCount });
 }));
 
 // every request below works inside one segment (header X-Segment, default 'college')

@@ -227,3 +227,8 @@ main:has(.side-layout) { max-width: none; margin: 0; }
 /* header: 9 tabs + search must not push the search box off-screen */
 @media (max-width: 1700px) { nav .ic { display: none; } }
 @media (max-width: 1480px) { .side { top: 132px; } }
+.seg-del { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); opacity: 0; transition: opacity .15s, background .15s, color .15s; cursor: pointer; }
+.seg-del .ic { margin: 0; }
+.seg-card:hover .seg-del, .seg-del:focus-visible { opacity: 1; }
+.seg-del:hover { background: var(--red-bg); color: var(--red); }
+@media (hover: none) { .seg-del { opacity: 1; } }

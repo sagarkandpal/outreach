@@ -4,6 +4,7 @@ let seg = null; // active segment {slug, name, unit, unitPlural, linkedinMax}
 let currentTab = 'today';
 let todayStep = ''; // Today tab step filter ('' = all, '0' = first touch, '1' = Follow-up 1, ...)
 let todayFilter = ''; // Today tab channel filter, kept across re-renders
+const BUILT_IN = ['college', 'startup']; // built-in segments cannot be deleted
 const OWNERS = { arjun: 'Arjun', sagar: 'Sagar' };
 const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
@@ -25,6 +26,7 @@ const ICON = {
   rocket: '<path d="M5 15c-1.5 1.3-2 5-2 5s3.7-.5 5-2"/><path d="M12 15 9 12c1-3 3-6 6-7.5 2.5-1 5-1 5-1s0 2.5-1 5C17.5 11 15 13 12 15z"/><circle cx="15.5" cy="8.5" r="1.3"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   folder: '<path d="M3 7a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M9 7V4h6v3"/>',
 };
 const ic = (n) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
 
@@ -957,6 +959,7 @@ async function showLanding() {
         <b>${esc(g.name)}</b>
         <span class="seg-meta">${g.orgs} ${esc((g.orgs === 1 ? g.unit : g.unitPlural).toLowerCase())} · ${g.contacts} contacts</span>
         ${g.slug === last ? '<span class="seg-last">Pichhli baar yahin the</span>' : ''}
+        ${BUILT_IN.includes(g.slug) ? '' : `<span class="seg-del" role="button" tabindex="0" data-delseg="${esc(g.slug)}" title="Is segment ko delete karo">${ic('trash')}</span>`}
       </button>`).join('')}
       <button class="seg-card add" id="segAddBtn" type="button"><span class="seg-ico">${ic('plus')}</span><b>Naya segment add karo</b><span class="seg-meta">Jaise Agencies, Hospitals, Schools…</span></button>
     </div>
@@ -968,6 +971,23 @@ async function showLanding() {
     </form>
   </div>`;
   landing.querySelectorAll('[data-seg]').forEach((b) => b.onclick = () => enterSegment(segs.find((g) => g.slug === b.dataset.seg)));
+  landing.querySelectorAll('[data-delseg]').forEach((d) => {
+    const run = (e) => {
+      e.stopPropagation(); e.preventDefault();
+      const g = segs.find((x) => x.slug === d.dataset.delseg);
+      const typed = prompt(`"${g.name}" segment delete karne par uske ${g.orgs} ${g.unitPlural.toLowerCase()} aur ${g.contacts} contacts hamesha ke liye hat jayenge. Wapas nahi aayega.\n\nPakka karne ke liye segment ka naam likho:`, '');
+      if (typed === null) return;
+      if (typed.trim().toLowerCase() !== g.name.trim().toLowerCase()) return toast('Naam match nahi hua, delete nahi hua');
+      guard(async () => {
+        const r = await api('DELETE', `/segments/${encodeURIComponent(g.slug)}`);
+        if (lsGet('lastSegment') === g.slug) lsSet('lastSegment', '');
+        toast(`"${g.name}" delete ho gaya (${r.orgs} ${g.unitPlural.toLowerCase()}, ${r.contacts} contacts)`);
+        showLanding();
+      });
+    };
+    d.onclick = run;
+    d.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') run(e); };
+  });
   const form = document.getElementById('segForm');
   document.getElementById('segAddBtn').onclick = () => { form.hidden = false; document.getElementById('sfName').focus(); };
   document.getElementById('sfCancel').onclick = () => { form.hidden = true; };
