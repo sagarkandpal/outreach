@@ -4,7 +4,7 @@ let seg = null; // active segment {slug, name, unit, unitPlural, linkedinMax}
 let currentTab = 'today';
 let todayStep = ''; // Today tab step filter ('' = all, '0' = first touch, '1' = Follow-up 1, ...)
 let todayFilter = ''; // Today tab channel filter, kept across re-renders
-const BUILT_IN = ['college', 'startup']; // built-in segments cannot be deleted
+const BUILT_IN = ['college']; // the Colleges segment cannot be deleted
 const OWNERS = { arjun: 'Arjun', sagar: 'Sagar' };
 const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };

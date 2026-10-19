@@ -81,8 +81,16 @@ const Segment = mongoose.model('Segment', segmentSchema);
 const College = mongoose.model('College', collegeSchema);
 
 // first run: create the built-in segments and tag pre-existing colleges as 'college'
+// built-in segments the user deleted on purpose: ensureSegments must not bring them back on the next start
+const Removed = mongoose.model('RemovedSegment', new mongoose.Schema({ slug: { type: String, required: true, unique: true } }, { timestamps: true }));
+// only Colleges is permanent: the app falls back to it when no segment is given
+const PROTECTED_SEGMENTS = ['college'];
+
 async function ensureSegments() {
-  for (const seg of DEFAULT_SEGMENTS) await Segment.updateOne({ slug: seg.slug }, { $setOnInsert: seg }, { upsert: true });
+  const gone = new Set((await Removed.find().lean()).map((r) => r.slug));
+  for (const seg of DEFAULT_SEGMENTS) {
+    if (!gone.has(seg.slug)) await Segment.updateOne({ slug: seg.slug }, { $setOnInsert: seg }, { upsert: true });
+  }
   await College.updateMany({ segment: { $exists: false } }, { $set: { segment: 'college' } });
 }
 
@@ -118,7 +126,9 @@ historySchema.index({ segment: 1, key: 1 }, { unique: true });
 
 module.exports = {
   settingsKey,
-  BUILT_IN_SEGMENTS: DEFAULT_SEGMENTS.map((s) => s.slug),
+  PROTECTED_SEGMENTS,
+  DEFAULT_SEGMENT_SLUGS: DEFAULT_SEGMENTS.map((s) => s.slug),
+  Removed,
   History: mongoose.model('History', historySchema),
   Settings,
   Segment,

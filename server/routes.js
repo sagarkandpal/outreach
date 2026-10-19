@@ -1,5 +1,5 @@
 const express = require('express');
-const { College, Contact, Segment, History, Settings, settingsKey, BUILT_IN_SEGMENTS, getSettings, getSegment } = require('./models');
+const { College, Contact, Segment, History, Settings, Removed, settingsKey, PROTECTED_SEGMENTS, DEFAULT_SEGMENT_SLUGS, getSettings, getSegment } = require('./models');
 const { decorate } = require('./due');
 const { buildEmailPrompt, firstName } = require('./prompt');
 
@@ -36,13 +36,14 @@ router.post('/segments', wrap(async (req, res) => {
   const unit = String(req.body.unit || '').trim() || 'Company';
   const unitPlural = String(req.body.unitPlural || '').trim() || (/y$/i.test(unit) ? unit.slice(0, -1) + 'ies' : unit + 's');
   const order = await Segment.countDocuments();
+  await Removed.deleteOne({ slug }); // re-creating a deleted built-in (e.g. "Startup") is allowed
   res.json(await Segment.create({ slug, name, unit, unitPlural, order }));
 }));
 
-// delete a custom segment with everything in it (the built-in Colleges / Startups are recreated on every start, so they stay)
+// delete a segment with everything in it; only Colleges is protected. A deleted built-in (Startups) is remembered so it is not recreated on restart
 router.delete('/segments/:slug', wrap(async (req, res) => {
   const slug = req.params.slug;
-  if (BUILT_IN_SEGMENTS.includes(slug)) return res.status(400).json({ error: 'Ye built-in segment hai, ise delete nahi kar sakte' });
+  if (PROTECTED_SEGMENTS.includes(slug)) return res.status(400).json({ error: 'Colleges segment delete nahi ho sakta, app isi par chalti hai' });
   if (!(await Segment.exists({ slug }))) return res.status(404).json({ error: 'Segment nahi mila' });
   const orgIds = (await College.find({ segment: slug }, '_id').lean()).map((c) => c._id);
   const contacts = await Contact.deleteMany({ collegeId: { $in: orgIds } });
@@ -50,6 +51,7 @@ router.delete('/segments/:slug', wrap(async (req, res) => {
   await Settings.deleteOne({ key: settingsKey(slug) });
   await History.deleteMany({ segment: slug });
   await Segment.deleteOne({ slug });
+  if (DEFAULT_SEGMENT_SLUGS.includes(slug)) await Removed.updateOne({ slug }, { $setOnInsert: { slug } }, { upsert: true });
   res.json({ ok: true, orgs: orgIds.length, contacts: contacts.deletedCount });
 }));
 
