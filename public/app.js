@@ -841,7 +841,16 @@ async function renderSettings() {
     };
     view.querySelectorAll('[data-inc]').forEach((b) => b.onclick = () => { sync(); setCount(b.dataset.inc, draft[b.dataset.inc].gaps.length + 1); draw(); });
     view.querySelectorAll('[data-dec]').forEach((b) => b.onclick = () => { sync(); setCount(b.dataset.dec, draft[b.dataset.dec].gaps.length - 1); draw(); });
-    view.querySelectorAll('[data-count]').forEach((el) => el.onchange = () => { sync(); setCount(el.dataset.count, el.value); draw(); });
+    view.querySelectorAll('[data-count]').forEach((el) => el.onchange = () => {
+      const ch = el.dataset.count;
+      if (Number(el.value) > maxFollow(ch)) toast(`${ch === 'linkedin' ? 'LinkedIn' : 'Email'} me max ${maxFollow(ch)} follow-ups ho sakte hain`);
+      sync(); setCount(ch, el.value); draw();
+    });
+    // clicking a number box selects its value, so typing "1" replaces the old number instead of becoming "21"
+    view.querySelectorAll('input[type="number"]').forEach((el) => {
+      el.addEventListener('focus', () => { el.select(); el.dataset.justFocused = '1'; });
+      el.addEventListener('mouseup', (e) => { if (el.dataset.justFocused) { e.preventDefault(); delete el.dataset.justFocused; } });
+    });
     document.getElementById('copyImportPrompt').onclick = () => { navigator.clipboard.writeText(IMPORT_PROMPT); toast('Prompt copied'); };
     document.getElementById('runImport').onclick = () => guard(async () => {
       const file = document.getElementById('importFile').files[0];
