@@ -48,7 +48,7 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
 Rules:
 - Har recipient ko sirf uske Step ka draft bhejo (Primary ya Follow-up N). Kisi aur step ka draft mat bhejna.${draftRules}
 - Draft ke andar {first_name} ki jagah recipient ka First name, aur {college} / {company} ki jagah ${unit} ka naam daalo. Baaki draft ka text bilkul same rakho, kuch add/edit mat karo.${senderRule}
-${anyDemo ? '- Draft mein {demo_link} (ya [Website Link With Botza]) ki jagah us recipient ki "Demo link" daalo (Recipients list me di hui, hu-ba-hu, badalna mat). Link clickable rakho.\n' : ''}- Draft ki pehli line "Subject:" se shuru ho to wo email ka subject hai, baaki body hai.
+${anyDemo ? '- Draft mein {demo_link} / [demo link] (ya [Website Link With Botza]) ki jagah us recipient ki "Demo link" daalo (Recipients list me di hui, hu-ba-hu, badalna mat). Link clickable rakho.\n' : ''}- Draft ki pehli line "Subject:" se shuru ho to wo email ka subject hai, baaki body hai.
 - Draft mein jahan [text](url) jaisa markdown link ho, use email mein clickable hyperlink bana ke bhejo: email ki HTML body use karo (har paragraph <p> mein, link <a href="url">text</a>), plain text body mein markdown kabhi mat bhejo. Agar connector HTML body support nahi karta to us email ko bhejo mat, sirf Gmail draft banao aur table mein "Failed: HTML body unsupported" likho.
 - Har email alag alag bhejo (koi CC/BCC ya group mail nahi).
 - Ambiguous kuch ho to guess mat karo; wo email mat bhejo aur table mein "Failed" likho.

@@ -1,8 +1,8 @@
 const { College } = require('./models');
 
-// drafts can use either; the old bracket form is what the startup drafts were written with
-const PLACEHOLDER = /\{demo_link\}|\[Website Link With Botza\]/g;
-const hasPlaceholder = (text) => /\{demo_link\}|\[Website Link With Botza\]/.test(String(text || ''));
+// drafts can write {demo_link}, [demo link] (any case) or the older [Website Link With Botza]
+const PLACEHOLDER = /\{demo[ _]?link\}|\[demo[ _]?link\]|\[Website Link With Botza\]/gi;
+const hasPlaceholder = (text) => new RegExp(PLACEHOLDER.source, 'i').test(String(text || ''));
 const fillDemoLink = (text, link) => String(text || '').replace(PLACEHOLDER, () => link);
 
 // "iitd.ac.in" -> "https://iitd.ac.in"; anything that is not a plain http(s) URL -> ''

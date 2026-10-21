@@ -63,7 +63,7 @@ async function fillDemo(t) {
   toast('Demo link ban raha hai... (pehli baar 1 min tak lag sakta hai)');
   try {
     const r = await api('POST', `/colleges/${t.collegeId}/demo`, {});
-    t.message = t.message.replace(/\{demo_link\}|\[Website Link With Botza\]/g, () => r.url);
+    t.message = t.message.replace(/\{demo[ _]?link\}|\[demo[ _]?link\]|\[Website Link With Botza\]/gi, () => r.url);
     t.demoPending = false;
     return true;
   } catch (e) { toast(`Demo link nahi ban paya: ${e.message}`); return false; }
