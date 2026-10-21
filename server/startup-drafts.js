@@ -51,7 +51,7 @@ Thanks,
 {sender_name}`,
   },
   {
-    label: 'Follow-up 3', gapDays: 2, attachment: "Link to {company}'s website with Botza (paste [Website Link With Botza])",
+    label: 'Follow-up 3', gapDays: 2, attachment: '',
     draft: `Subject: Botza on {company}'s website, ready to try
 
 Hi {first_name},
@@ -60,7 +60,7 @@ I did something a bit unusual: I set up Botza on a version of your website, so y
 
 Open the link and ask it what a first-time visitor might ask, like a pricing question or "do you work with companies like ours?" It takes a minute or two.
 
-[Website Link With Botza]
+{demo_link}
 
 Regards,
 {sender_name}`,
@@ -110,7 +110,7 @@ If it looks relevant for {company}, would you be open to a 15-minute demo this w
   },
   {
     label: 'Follow-up 2', gapDays: 2,
-    draft: `{first_name}, I went ahead and put Botza on a version of your website. Ask it something a visitor might ask and see what comes back: [Website Link With Botza]
+    draft: `{first_name}, I went ahead and put Botza on a version of your website. Ask it something a visitor might ask and see what comes back: {demo_link}
 
 If you like what you see, I can walk you through how it would work for {company}. Open to a quick 15-minute call?`,
   },

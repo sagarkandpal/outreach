@@ -1,0 +1,43 @@
+const { College } = require('./models');
+
+// drafts can use either; the old bracket form is what the startup drafts were written with
+const PLACEHOLDER = /\{demo_link\}|\[Website Link With Botza\]/g;
+const hasPlaceholder = (text) => /\{demo_link\}|\[Website Link With Botza\]/.test(String(text || ''));
+const fillDemoLink = (text, link) => String(text || '').replace(PLACEHOLDER, () => link);
+
+// "iitd.ac.in" -> "https://iitd.ac.in"; anything that is not a plain http(s) URL -> ''
+function normalizeWebsite(raw) {
+  let s = String(raw || '').trim();
+  if (!s) return '';
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) s = `https://${s}`;
+  try {
+    const u = new URL(s);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : '';
+  } catch { return ''; }
+}
+
+// Preview link for one organisation. Generated once through the hosted mirror-demo and cached on the college.
+// Never throws: returns { url } or { error } so prompt building can skip just that recipient.
+async function ensureDemoLink(college) {
+  if (college.demoUrl) return { url: college.demoUrl };
+  const site = normalizeWebsite(college.website);
+  if (!site) return { error: 'website nahi hai' };
+  const base = String(process.env.DEMO_API_URL || '').replace(/\/+$/, '');
+  if (!base) return { error: 'DEMO_API_URL set nahi hai (.env me daalo)' };
+  try {
+    const r = await fetch(`${base}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: site }),
+      signal: AbortSignal.timeout(60000), // hosted free tier can take ~50s to wake up
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || !body.previewUrl) return { error: `demo link nahi bana (${body.error || r.status})` };
+    await College.updateOne({ _id: college._id, website: college.website }, { $set: { demoUrl: body.previewUrl } });
+    return { url: body.previewUrl };
+  } catch (e) {
+    return { error: `demo service tak nahi pahunch paya (${e.name === 'TimeoutError' ? 'timeout' : e.message})` };
+  }
+}
+
+module.exports = { hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink };

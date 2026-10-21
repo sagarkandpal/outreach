@@ -2,6 +2,7 @@ const express = require('express');
 const { College, Contact, Segment, History, Settings, Removed, settingsKey, PROTECTED_SEGMENTS, DEFAULT_SEGMENT_SLUGS, getSettings, getSegment } = require('./models');
 const { decorate } = require('./due');
 const { buildEmailPrompt, firstName } = require('./prompt');
+const { hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink } = require('./demo');
 
 const router = express.Router();
 const wrap = (fn) => (req, res) => fn(req, res).catch((e) => res.status(500).json({ error: e.message }));
@@ -99,9 +100,9 @@ router.get('/colleges', wrap(async (req, res) => {
 }));
 
 router.post('/colleges', wrap(async (req, res) => {
-  const { name, city, notes, contacts = [] } = req.body;
+  const { name, city, notes, website, contacts = [] } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: `${req.seg.unit} name required` });
-  const college = await College.create({ name, city, notes, segment: req.seg.slug });
+  const college = await College.create({ name, city, notes, website: normalizeWebsite(website), segment: req.seg.slug });
   const rows = contacts.filter((c) => c.name || c.email || c.linkedinUrl || c.role);
   if (rows.length) await Contact.insertMany(rows.map((c) => ({ ...c, collegeId: college._id })));
   res.json(college);
@@ -110,6 +111,23 @@ router.post('/colleges', wrap(async (req, res) => {
 router.patch('/colleges/:id', wrap(async (req, res) => {
   const { name, city, notes } = req.body;
   res.json(await College.findByIdAndUpdate(req.params.id, { name, city, notes }, { new: true }));
+}));
+
+// website the demo link is built from; changing it drops the cached link so a fresh one is made
+router.patch('/colleges/:id/website', wrap(async (req, res) => {
+  const website = normalizeWebsite(req.body.website);
+  if (String(req.body.website || '').trim() && !website) return res.status(400).json({ error: 'Website ka link sahi nahi hai' });
+  res.json(await College.findByIdAndUpdate(req.params.id, { website, demoUrl: '' }, { new: true }));
+}));
+
+// make (or reuse) the demo link for one organisation
+router.post('/colleges/:id/demo', wrap(async (req, res) => {
+  const college = await College.findById(req.params.id);
+  if (!college) return res.status(404).json({ error: 'Not found' });
+  if (req.body.fresh) { college.demoUrl = ''; await College.updateOne({ _id: college._id }, { demoUrl: '' }); }
+  const r = await ensureDemoLink(college);
+  if (r.error) return res.status(502).json({ error: r.error });
+  res.json({ url: r.url });
 }));
 
 router.patch('/colleges/:id/owner', wrap(async (req, res) => {
@@ -197,6 +215,7 @@ async function buildToday(req, settings, onlyChannel, now = new Date(), pre) {
   const { colleges, contacts } = pre || await loadActive(req);
   const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
   const cowner = Object.fromEntries(colleges.map((c) => [String(c._id), c.owner || '']));
+  const cdemo = Object.fromEntries(colleges.map((c) => [String(c._id), c.demoUrl || '']));
   const items = [];
   for (const raw of contacts) {
     const c = dec(req, raw, settings, now);
@@ -214,10 +233,14 @@ async function buildToday(req, settings, onlyChannel, now = new Date(), pre) {
             .replace(/\{first_name\}/g, firstName(c.name))
             .replace(/\{(?:college|company)\}/g, () => college.replace('[DEMO] ', ''))
         : '';
+      // demo link is only filled from the cache here; the app asks /colleges/:id/demo when it is still missing
+      const demoLink = cdemo[String(c.collegeId)];
+      const needsDemo = channel === 'linkedin' && hasPlaceholder(message);
       items.push({
-        contactId: c._id, college, owner: cowner[String(c.collegeId)] || '', role: c.role, name: c.name,
+        contactId: c._id, collegeId: c.collegeId, college, owner: cowner[String(c.collegeId)] || '', role: c.role, name: c.name,
         email: c.email, linkedinUrl: c.linkedinUrl, channel, stepIndex: i, stepLabel: steps[i].label,
-        state: cells[i].state, daysLate: cells[i].days || 0, isFirst: i === 0, message,
+        state: cells[i].state, daysLate: cells[i].days || 0, isFirst: i === 0,
+        message: needsDemo && demoLink ? fillDemoLink(message, demoLink) : message, demoPending: needsDemo && !demoLink,
         attachment: channel === 'email' ? String(steps[i].attachment || '').trim() : '',
       });
     }
@@ -310,6 +333,15 @@ router.post('/prompt/emails', wrap(async (req, res) => {
   const settings = await getSettings(req.seg.slug);
   const { senderName, college } = req.body || {};
   const items = (await buildToday(req, settings)).filter((i) => !college || i.college === college);
+  // demo links for recipients whose step draft uses the placeholder (generated once per organisation, then cached)
+  const demoLinks = {}, demoErrors = {};
+  for (const t of items) {
+    const key = String(t.collegeId);
+    if (t.channel !== 'email' || !hasPlaceholder(settings.emailSteps[t.stepIndex] && settings.emailSteps[t.stepIndex].draft) || key in demoLinks || key in demoErrors) continue;
+    const r = await ensureDemoLink(await College.findById(t.collegeId));
+    if (r.url) demoLinks[key] = r.url; else demoErrors[key] = r.error;
+  }
+  for (const t of items) { t.demoLink = demoLinks[String(t.collegeId)] || ''; t.demoError = demoErrors[String(t.collegeId)] || ''; }
   res.json(buildEmailPrompt(items, settings.emailSteps, senderName, req.seg.unit));
 }));
 
@@ -430,7 +462,7 @@ router.get('/replied', wrap(async (req, res) => {
 }));
 
 // ---------- bulk import ----------
-// rows: [{college, role, name, email, linkedin}]
+// rows: [{college, role, name, email, linkedin, website?}]
 router.post('/import', wrap(async (req, res) => {
   const rows = req.body.rows || [];
   const cache = {};
@@ -440,7 +472,9 @@ router.post('/import', wrap(async (req, res) => {
     if (!cn) continue;
     if (!cache[cn.toLowerCase()]) {
       let col = await College.findOne({ segment: req.seg.slug, name: new RegExp(`^${cn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
-      if (!col) { col = await College.create({ name: cn, segment: req.seg.slug }); colleges++; }
+      const website = normalizeWebsite(r.website);
+      if (!col) { col = await College.create({ name: cn, website, segment: req.seg.slug }); colleges++; }
+      else if (website && !col.website) { col.website = website; await col.save(); }
       cache[cn.toLowerCase()] = col;
     }
     const collegeId = cache[cn.toLowerCase()]._id;

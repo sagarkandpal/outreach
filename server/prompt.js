@@ -1,3 +1,5 @@
+const { hasPlaceholder } = require('./demo');
+
 const TITLES = new Set(['dr', 'prof', 'mr', 'mrs', 'ms', 'shri', 'smt']);
 
 // "Dr. Anita Sharma" -> "Anita"
@@ -18,6 +20,7 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
     const draft = (steps[t.stepIndex] && steps[t.stepIndex].draft || '').trim();
     if (!t.email) skipped.push(`${t.college} / ${t.name || t.role}: email nahi hai`);
     else if (!draft) skipped.push(`${t.college} / ${t.name || t.role}: "${t.stepLabel}" ka draft Settings mein nahi hai`);
+    else if (hasPlaceholder(draft) && !t.demoLink) skipped.push(`${t.college} / ${t.name || t.role}: demo link nahi ban paya (${t.demoError || 'website nahi hai'})`);
     else if (/\{first_name\}/.test(draft) && !firstName(t.name)) skipped.push(`${t.college} / ${t.role}: contact ka naam nahi hai, draft mein {first_name} hai`);
     else ready.push(t);
   }
@@ -28,8 +31,10 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
   const modeOf = (i) => (attachOf(i) ? `DRAFT_ONLY (attach: ${attachOf(i)})` : 'SEND');
   const hasDraftOnly = usedSteps.some((i) => attachOf(i));
   const drafts = usedSteps.map((i) => `### ${steps[i].label}  [Mode: ${modeOf(i)}]\n<<<DRAFT\n${steps[i].draft.trim().replace(/\{sender_name\}/g, () => sender)}\nDRAFT>>>`).join('\n\n');
+  // per-recipient demo link, only for steps whose draft uses {demo_link}
+  const anyDemo = ready.some((t) => hasPlaceholder(steps[t.stepIndex].draft));
   const cell = (s) => String(s).replace(/\s*[|\r\n]+\s*/g, ' ');
-  const rows = ready.map((t, n) => `${n + 1} | ${cell(t.college.replace('[DEMO] ', ''))} | ${cell(firstName(t.name))} | ${t.email} | ${t.stepLabel} | ${modeOf(t.stepIndex)}`).join('\n');
+  const rows = ready.map((t, n) => `${n + 1} | ${cell(t.college.replace('[DEMO] ', ''))} | ${cell(firstName(t.name))} | ${t.email} | ${t.stepLabel} | ${modeOf(t.stepIndex)}${anyDemo ? ` | ${t.demoLink || '-'}` : ''}`).join('\n');
   const senderRule = sender ? `\n- Draft mein sender (mera) naam "${sender}" hi rehna chahiye; use badalna mat.` : '';
   const draftRules = hasDraftOnly ? `
 - Mode "SEND" wale recipients ko email seedha bhej do.
@@ -43,7 +48,7 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
 Rules:
 - Har recipient ko sirf uske Step ka draft bhejo (Primary ya Follow-up N). Kisi aur step ka draft mat bhejna.${draftRules}
 - Draft ke andar {first_name} ki jagah recipient ka First name, aur {college} / {company} ki jagah ${unit} ka naam daalo. Baaki draft ka text bilkul same rakho, kuch add/edit mat karo.${senderRule}
-- Draft ki pehli line "Subject:" se shuru ho to wo email ka subject hai, baaki body hai.
+${anyDemo ? '- Draft mein {demo_link} (ya [Website Link With Botza]) ki jagah us recipient ki "Demo link" daalo (Recipients list me di hui, hu-ba-hu, badalna mat). Link clickable rakho.\n' : ''}- Draft ki pehli line "Subject:" se shuru ho to wo email ka subject hai, baaki body hai.
 - Draft mein jahan [text](url) jaisa markdown link ho, use email mein clickable hyperlink bana ke bhejo: email ki HTML body use karo (har paragraph <p> mein, link <a href="url">text</a>), plain text body mein markdown kabhi mat bhejo. Agar connector HTML body support nahi karta to us email ko bhejo mat, sirf Gmail draft banao aur table mein "Failed: HTML body unsupported" likho.
 - Har email alag alag bhejo (koi CC/BCC ya group mail nahi).
 - Ambiguous kuch ho to guess mat karo; wo email mat bhejo aur table mein "Failed" likho.
@@ -55,7 +60,7 @@ Saare emails${hasDraftOnly ? '/drafts' : ''} ke baad, aakhri message mein sirf e
 ## Drafts
 ${drafts}
 
-## Recipients (# | ${unit} | First name | Email | Step | Mode)
+## Recipients (# | ${unit} | First name | Email | Step | Mode${anyDemo ? ' | Demo link' : ''})
 ${rows}
 ` : '';
 

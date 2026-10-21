@@ -10,6 +10,10 @@ Open http://localhost:3000
 Without a `.env`, the app falls back to a local MongoDB at `mongodb://127.0.0.1:27017/botza_outreach`.
 Everyone who uses the same `MONGO_URI` sees the same data. Never commit `.env`.
 
+## Demo link (Follow-up 3)
+Draft me `{demo_link}` likho (purana `[Website Link With Botza]` bhi chalta hai). Har college/company ki **website** daalo (import me 6th column ya card par "+ Website"). Email prompt banate waqt ya LinkedIn "Copy" dabate waqt link apne aap ban jata hai (hosted mirror-demo se) aur save ho jata hai, dobara nahi banta.
+`.env` me `DEMO_API_URL=<hosted mirror-demo ka URL>` zaroori hai. Website badalne par purana link hat jata hai.
+
 ## Troubleshooting (data alag dikh raha hai?)
 Server start hote hi terminal me ye line aani chahiye:
 

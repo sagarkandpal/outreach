@@ -57,6 +57,17 @@ const ymd = (d) => {
 };
 const prettyDate = (d) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 const savedSender = () => { try { return localStorage.getItem('senderName') || ''; } catch { return ''; } };
+// LinkedIn message still has the {demo_link} placeholder: make the link now and put it in the message (false = could not)
+async function fillDemo(t) {
+  if (!t.demoPending) return true;
+  toast('Demo link ban raha hai... (pehli baar 1 min tak lag sakta hai)');
+  try {
+    const r = await api('POST', `/colleges/${t.collegeId}/demo`, {});
+    t.message = t.message.replace(/\{demo_link\}|\[Website Link With Botza\]/g, () => r.url);
+    t.demoPending = false;
+    return true;
+  } catch (e) { toast(`Demo link nahi ban paya: ${e.message}`); return false; }
+}
 const safeUrl =(u) => (/^https?:\/\//i.test(u) ? u : u ? 'https://' + u : '');
 
 async function guard(fn) {
@@ -259,15 +270,16 @@ async function renderToday() {
       await navigator.clipboard.writeText(r.prompt);
       toast(`${college.replace('[DEMO] ', '')}: ${r.count} emails ka prompt copy ho gaya ✓`);
     }));
-    box.querySelectorAll('[data-msg]').forEach((b) => b.onclick = () => {
+    box.querySelectorAll('[data-msg]').forEach((b) => b.onclick = () => guard(async () => {
       const t = items.find((x) => x.contactId === b.dataset.msg && x.channel === 'linkedin');
       if (!t || !t.message) return toast('Settings me is step ka LinkedIn draft nahi hai');
+      if (!(await fillDemo(t))) return;
       const senderName = b.closest('.tcard').querySelector('[data-sender]').value.trim();
       if (!senderName && /\{sender_name\}/.test(t.message)) return toast('Pehle sender naam likho');
       try { localStorage.setItem('senderName', senderName); } catch {}
       navigator.clipboard.writeText(t.message.replace(/\{sender_name\}/g, () => senderName));
       toast(`${t.stepLabel} copied ✓`);
-    });
+    }));
     box.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => { navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); });
   };
   const sel = document.getElementById('fChannel');
@@ -370,17 +382,18 @@ function renderLinkedin(data) {
   box.innerHTML = tabs.map(([k, l, c]) => `<button class="${todayOwner === k ? 'active' : ''}" data-owner="${k}">${l} <span class="badge ${todayOwner === k ? '' : 'grey'}">${c}</span></button>`).join('');
   box.querySelectorAll('[data-owner]').forEach((b) => b.onclick = () => { todayOwner = todayOwner === b.dataset.owner ? '' : b.dataset.owner; lsSet('todayOwner', todayOwner); guard(() => renderTodayTab(true)); });
 
-  view.querySelectorAll('[data-copyopen]').forEach((b) => b.onclick = () => {
+  view.querySelectorAll('[data-copyopen]').forEach((b) => b.onclick = () => guard(async () => {
     const t = (b.dataset.kind === 'notes' ? notes : followups).find((x) => x.contactId === b.dataset.copyopen);
     const senderName = document.getElementById('liSender').value.trim();
     if (!t) return;
     if (!t.message) { if (t.linkedinUrl) window.open(safeUrl(t.linkedinUrl), '_blank', 'noopener'); return toast('Is step ka draft nahi hai (Settings me likho), profile khol diya'); }
+    if (!(await fillDemo(t))) return;
     if (!senderName && /\{sender_name\}/.test(t.message)) return toast('Pehle sender naam likho');
     lsSet('senderName', senderName);
     navigator.clipboard.writeText(t.message.replace(/\{sender_name\}/g, () => senderName));
     if (t.linkedinUrl) window.open(safeUrl(t.linkedinUrl), '_blank', 'noopener');
     toast(`${t.stepLabel} copied ✓`);
-  });
+  }));
   view.querySelectorAll('[data-sent]').forEach((b) => b.onclick = () => guard(async () => {
     b.disabled = true;
     try { await api('POST', `/contacts/${b.dataset.sent}/sent`, { channel: 'linkedin' }); } catch (e) { b.disabled = false; throw e; }
@@ -533,8 +546,10 @@ async function renderColleges() {
     </div>
     ${colleges.map((col) => `
     <div class="card college">
-      <h3><span>${esc(col.name)} <span class="muted">${esc(col.city || '')}</span></span>
-        <span><button class="btn" data-addc="${col._id}">+ Contact</button> <button class="btn danger" data-delcol="${col._id}">Delete</button></span></h3>
+      <h3><span>${esc(col.name)} <span class="muted">${esc(col.city || '')}</span>
+          ${col.website ? `<small><a href="${esc(safeUrl(col.website))}" target="_blank" rel="noopener">${esc(col.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a></small>` : ''}
+          ${col.demoUrl ? `<small><a href="${esc(safeUrl(col.demoUrl))}" target="_blank" rel="noopener">Demo link ↗</a></small>` : ''}</span>
+        <span><button class="btn" data-website="${col._id}" data-cur="${esc(col.website || '')}">${col.website ? 'Website' : '+ Website'}</button>${col.website ? ` <button class="btn" data-demo="${col._id}">${col.demoUrl ? 'Demo link dobara' : 'Demo link'}</button>` : ''} <button class="btn" data-addc="${col._id}">+ Contact</button> <button class="btn danger" data-delcol="${col._id}">Delete</button></span></h3>
       <div class="grid-wrap"><table class="grid">
         <thead>
           <tr><th></th><th class="grp" colspan="${settings.emailSteps.length}">EMAIL</th><th class="grp" colspan="${settings.linkedinSteps.length}">LINKEDIN</th><th></th></tr>
@@ -598,6 +613,17 @@ async function renderColleges() {
     if (!confirm(`Poora ${seg.unit.toLowerCase()} + uske saare contacts delete karun?`)) return;
     await api('DELETE', `/colleges/${b.dataset.delcol}`); render();
   }));
+  view.querySelectorAll('[data-website]').forEach((b) => b.onclick = () => guard(async () => {
+    const w = prompt(`${seg.unit} ki website (demo link isi se banta hai, khali = hata do):`, b.dataset.cur);
+    if (w === null) return;
+    await api('PATCH', `/colleges/${b.dataset.website}/website`, { website: w });
+    render();
+  }));
+  view.querySelectorAll('[data-demo]').forEach((b) => b.onclick = () => guard(async () => {
+    b.disabled = true; toast('Demo link ban raha hai... (pehli baar 1 min tak lag sakta hai)');
+    try { const r = await api('POST', `/colleges/${b.dataset.demo}/demo`, { fresh: true }); await navigator.clipboard.writeText(r.url); toast('Demo link copy ho gaya ✓'); render(); }
+    finally { b.disabled = false; }
+  }));
   view.querySelectorAll('[data-addc]').forEach((b) => b.onclick = () => guard(async () => {
     const role = prompt(seg.slug === 'college' ? 'Role (jaise Dean, Head, Principal...):' : 'Role (jaise Founder, CEO, CTO...):', '');
     if (role === null) return;
@@ -656,7 +682,7 @@ async function renderReplied() {
 
 // ---------- ADD / IMPORT ----------
 function parseCsv(text) {
-  // minimal CSV/TSV parser with quote support; columns: college, role, name, email, linkedin
+  // minimal CSV/TSV parser with quote support; columns: college, role, name, email, linkedin, website (optional)
   const rows = [];
   for (const line of text.split(/\r?\n/)) {
     if (!line.trim()) continue;
@@ -668,7 +694,7 @@ function parseCsv(text) {
       else cur += ch;
     }
     cols.push(cur.trim());
-    rows.push({ college: cols[0], role: cols[1], name: cols[2], email: cols[3], linkedin: cols[4] });
+    rows.push({ college: cols[0], role: cols[1], name: cols[2], email: cols[3], linkedin: cols[4], website: cols[5] });
   }
   if (rows[0] && /^(college|company|startup|organi[sz]ation)/i.test(rows[0].college || '')) rows.shift(); // header row
   return rows;
@@ -678,7 +704,7 @@ async function renderAdd() {
   const roleList = `<datalist id="roleList">${(seg.slug === 'college' ? ROLE_SUGGESTIONS : STARTUP_ROLES).map((r) => `<option value="${esc(r)}">`).join('')}</datalist>`;
   view.innerHTML = `
     <div class="card"><h2>Naya ${esc(seg.unit.toLowerCase())} add karo</h2>
-      <div class="row"><input id="cName" placeholder="${esc(seg.unit)} name *" style="min-width:280px"><input id="cCity" placeholder="City (optional)"></div>
+      <div class="row"><input id="cName" placeholder="${esc(seg.unit)} name *" style="min-width:280px"><input id="cCity" placeholder="City (optional)"><input id="cWebsite" placeholder="Website (demo link ke liye)" style="min-width:240px"></div>
       <div id="contactRows"></div>
       ${roleList}
       <div class="row">
@@ -689,7 +715,7 @@ async function renderAdd() {
     <div class="card"><h2>Bulk import (Apollo / CSV / Excel se paste)</h2>
       <ol class="steps">
         <li><button class="btn small" id="dlTemplate">⬇ Demo template download karo (Excel me khulega)</button></li>
-        <li>Excel me apni profiles bharo: <b>${esc(seg.unit.toLowerCase())}, role, name, email, linkedin</b>. Ek banda = ek row. Ek ${esc(seg.unit.toLowerCase())} ke jitne bande, utni rows (naam har row me same likho).</li>
+        <li>Excel me apni profiles bharo: <b>${esc(seg.unit.toLowerCase())}, role, name, email, linkedin, website</b> (website optional, demo link usi se banta hai). Ek banda = ek row. Ek ${esc(seg.unit.toLowerCase())} ke jitne bande, utni rows (naam har row me same likho).</li>
         <li>Phir ya toh <b>CSV file chuno</b>: <input type="file" id="csvFile" accept=".csv,.tsv,.txt"> ya Excel me rows select karke <b>Copy</b> karo aur neeche box me <b>Paste</b> karo.</li>
         <li><b>Import</b> dabao. Template ke sample rows (Demo College) hata dena ya baad me delete kar dena.</li>
       </ol>
@@ -720,7 +746,7 @@ async function renderAdd() {
       row.querySelectorAll('input').forEach((el) => (o[el.dataset.f] = el.value.trim()));
       return o;
     }).filter((o) => o.name || o.email || o.linkedinUrl);
-    await api('POST', '/colleges', { name: document.getElementById('cName').value, city: document.getElementById('cCity').value, contacts });
+    await api('POST', '/colleges', { name: document.getElementById('cName').value, city: document.getElementById('cCity').value, website: document.getElementById('cWebsite').value, contacts });
     toast(`${seg.unit} saved`); currentTab = 'colleges'; render();
   });
   const csvBox = document.getElementById('csv');
@@ -736,18 +762,18 @@ async function renderAdd() {
   };
   document.getElementById('dlTemplate').onclick = () => {
     const rows = seg.slug !== 'college' ? [
-      [seg.unit.toLowerCase(), 'role', 'name', 'email', 'linkedin'],
-      ['Demo Startup A', 'Founder', 'Riya Shah', 'riya@demo-a.io', 'linkedin.com/in/riya-demo'],
-      ['Demo Startup A', 'CTO', 'Aman Verma', 'aman@demo-a.io', 'linkedin.com/in/aman-demo'],
-      ['Demo Startup B', 'CEO', 'Kabir Nair', 'kabir@demo-b.io', 'linkedin.com/in/kabir-demo'],
-      ['Demo Startup B', 'Head of HR', 'Sneha Rao', 'sneha@demo-b.io', 'linkedin.com/in/sneha-demo'],
+      [seg.unit.toLowerCase(), 'role', 'name', 'email', 'linkedin', 'website'],
+      ['Demo Startup A', 'Founder', 'Riya Shah', 'riya@demo-a.io', 'linkedin.com/in/riya-demo', 'demo-a.io'],
+      ['Demo Startup A', 'CTO', 'Aman Verma', 'aman@demo-a.io', 'linkedin.com/in/aman-demo', 'demo-a.io'],
+      ['Demo Startup B', 'CEO', 'Kabir Nair', 'kabir@demo-b.io', 'linkedin.com/in/kabir-demo', 'demo-b.io'],
+      ['Demo Startup B', 'Head of HR', 'Sneha Rao', 'sneha@demo-b.io', 'linkedin.com/in/sneha-demo', 'demo-b.io'],
     ] : [
-      ['college', 'role', 'name', 'email', 'linkedin'],
-      ['Demo College A', 'Dean', 'Dr. Anita Sharma', 'anita@demo-a.edu', 'linkedin.com/in/anita-demo'],
-      ['Demo College A', 'Head', 'Prof. Rajesh Iyer', 'rajesh@demo-a.edu', 'linkedin.com/in/rajesh-demo'],
-      ['Demo College A', 'Manager', 'Priya Menon', 'priya@demo-a.edu', 'linkedin.com/in/priya-demo'],
-      ['Demo College B', 'Principal', 'Dr. Suresh Patil', 'suresh@demo-b.edu', 'linkedin.com/in/suresh-demo'],
-      ['Demo College B', 'Placement Officer', 'Neha Kulkarni', 'neha@demo-b.edu', 'linkedin.com/in/neha-demo'],
+      ['college', 'role', 'name', 'email', 'linkedin', 'website'],
+      ['Demo College A', 'Dean', 'Dr. Anita Sharma', 'anita@demo-a.edu', 'linkedin.com/in/anita-demo', 'demo-a.edu'],
+      ['Demo College A', 'Head', 'Prof. Rajesh Iyer', 'rajesh@demo-a.edu', 'linkedin.com/in/rajesh-demo', 'demo-a.edu'],
+      ['Demo College A', 'Manager', 'Priya Menon', 'priya@demo-a.edu', 'linkedin.com/in/priya-demo', 'demo-a.edu'],
+      ['Demo College B', 'Principal', 'Dr. Suresh Patil', 'suresh@demo-b.edu', 'linkedin.com/in/suresh-demo', 'demo-b.edu'],
+      ['Demo College B', 'Placement Officer', 'Neha Kulkarni', 'neha@demo-b.edu', 'linkedin.com/in/neha-demo', 'demo-b.edu'],
     ];
     const csv = '﻿' + rows.map((r) => r.map((v) => `"${v}"`).join(',')).join('\r\n');
     const a = document.createElement('a');

@@ -32,7 +32,10 @@ const settingsSchema = new mongoose.Schema({
 });
 
 const collegeSchema = new mongoose.Schema(
-  { name: { type: String, required: true, trim: true }, city: String, notes: String, segment: { type: String, default: 'college', index: true }, owner: { type: String, enum: ['', 'arjun', 'sagar'], default: '' } },
+  { name: { type: String, required: true, trim: true }, city: String, notes: String,
+    website: { type: String, default: '' }, // site Botza is shown on in the demo link
+    demoUrl: { type: String, default: '' }, // generated preview link (cached; cleared when website changes)
+    segment: { type: String, default: 'college', index: true }, owner: { type: String, enum: ['', 'arjun', 'sagar'], default: '' } },
   { timestamps: true }
 );
 
