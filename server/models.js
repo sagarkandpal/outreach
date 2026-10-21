@@ -35,6 +35,8 @@ const collegeSchema = new mongoose.Schema(
   { name: { type: String, required: true, trim: true }, city: String, notes: String,
     website: { type: String, default: '' }, // site Botza is shown on in the demo link
     demoUrl: { type: String, default: '' }, // generated preview link (cached; cleared when website changes)
+    demoStatus: { type: String, enum: ['', 'ok', 'failed'], default: '' }, // 'failed' = Botza cannot be shown on this site
+    demoError: { type: String, default: '' },
     segment: { type: String, default: 'college', index: true }, owner: { type: String, enum: ['', 'arjun', 'sagar'], default: '' } },
   { timestamps: true }
 );
@@ -120,6 +122,7 @@ const historySchema = new mongoose.Schema(
     city: { type: String, default: '' },
     owner: { type: String, default: '' },
     contactsReached: { type: Number, default: 0 }, // deleted contacts that had at least one message sent
+    demoUrl: { type: String, default: '' }, // demo link the organisation had when it was removed
     firstSentAt: Date,
     lastSentAt: Date,
   },

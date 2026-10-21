@@ -16,30 +16,60 @@ function normalizeWebsite(raw) {
   } catch { return ''; }
 }
 
-// Preview link for one organisation. Generated once through the hosted mirror-demo and cached on the college.
-// Never throws: returns { url } or { error } so prompt building can skip just that recipient.
-async function ensureDemoLink(college) {
-  if (college.demoUrl) return { url: college.demoUrl };
-  const site = normalizeWebsite(college.website);
-  if (!site) return { error: 'website nahi hai' };
-  const base = String(process.env.DEMO_API_URL || '').replace(/\/+$/, '');
-  if (!base) return { error: 'DEMO_API_URL set nahi hai (.env me daalo)' };
+async function setDemo(college, fields) {
+  Object.assign(college, fields);
+  await College.updateOne({ _id: college._id, website: college.website }, { $set: fields });
+}
+
+// open the preview the way a visitor would: 200 = works, other status = the site cannot be shown, no answer = unknown
+async function checkPreview(url) {
   try {
-    const r = await fetch(`${base}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: site }),
-      signal: AbortSignal.timeout(60000), // hosted free tier can take ~50s to wake up
-    });
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok || !body.previewUrl) return { error: `demo link nahi bana (${body.error || r.status})` };
-    // the service may report an http:// BASE_URL; always hand out the link on the same base we called
-    const url = `${base}${new URL(body.previewUrl).pathname}`;
-    await College.updateOne({ _id: college._id, website: college.website }, { $set: { demoUrl: url } });
-    return { url };
-  } catch (e) {
-    return { error: `demo service tak nahi pahunch paya (${e.name === 'TimeoutError' ? 'timeout' : e.message})` };
+    const r = await fetch(url, { signal: AbortSignal.timeout(45000) });
+    if (r.body) await r.body.cancel().catch(() => {});
+    return r.ok ? { ok: true } : { ok: false, why: `site load nahi ho rahi (${r.status})` };
+  } catch { return { unknown: true }; }
+}
+
+// Preview link for one organisation. Generated once through the hosted mirror-demo, checked, and cached on the college.
+// Never throws: returns { url } or { error, failed? }. failed = the site itself cannot show Botza (remembered, not retried).
+async function ensureDemoLink(college) {
+  if (college.demoStatus === 'failed') return { error: college.demoError || 'is site par demo nahi lag sakta', failed: true };
+  if (college.demoUrl && college.demoStatus === 'ok') return { url: college.demoUrl };
+  let url = college.demoUrl;
+  if (!url) {
+    const site = normalizeWebsite(college.website);
+    if (!site) return { error: 'website nahi hai' };
+    const base = String(process.env.DEMO_API_URL || '').replace(/\/+$/, '');
+    if (!base) return { error: 'DEMO_API_URL set nahi hai (.env me daalo)' };
+    try {
+      const r = await fetch(`${base}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: site }),
+        signal: AbortSignal.timeout(60000), // hosted free tier can take ~50s to wake up
+      });
+      const body = await r.json().catch(() => ({}));
+      if (r.status === 400 || r.status === 422) {
+        const why = `website khul nahi rahi (${body.error || r.status})`;
+        await setDemo(college, { demoStatus: 'failed', demoError: why });
+        return { error: why, failed: true };
+      }
+      if (!r.ok || !body.previewUrl) return { error: `demo link nahi bana (${body.error || r.status})` };
+      // the service may report an http:// BASE_URL; always hand out the link on the same base we called
+      url = `${base}${new URL(body.previewUrl).pathname}`;
+      await setDemo(college, { demoUrl: url });
+    } catch (e) {
+      return { error: `demo service tak nahi pahunch paya (${e.name === 'TimeoutError' ? 'timeout' : e.message})` };
+    }
   }
+  const check = await checkPreview(url);
+  if (check.unknown) return { error: 'demo link check nahi ho paya, thodi der baad dobara try karo' };
+  if (!check.ok) {
+    await setDemo(college, { demoUrl: '', demoStatus: 'failed', demoError: check.why });
+    return { error: check.why, failed: true };
+  }
+  await setDemo(college, { demoStatus: 'ok', demoError: '' });
+  return { url };
 }
 
 module.exports = { hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink };

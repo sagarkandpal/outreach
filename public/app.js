@@ -66,7 +66,7 @@ async function fillDemo(t) {
     t.message = t.message.replace(/\{demo[ _]?link\}|\[demo[ _]?link\]|\[Website Link With Botza\]/gi, () => r.url);
     t.demoPending = false;
     return true;
-  } catch (e) { toast(`Demo link nahi ban paya: ${e.message}`); return false; }
+  } catch (e) { toast(`Demo link nahi ban paya: ${e.message}`); if (/nahi lag sakta|load nahi|khul nahi/.test(e.message)) render(); return false; }
 }
 const safeUrl =(u) => (/^https?:\/\//i.test(u) ? u : u ? 'https://' + u : '');
 
@@ -212,6 +212,7 @@ async function renderToday() {
     box.innerHTML = `<div class="cards">${[...colleges].map(([name, people]) => `
       <div class="card tcard" data-card="${esc(name)}">
         <div class="tcard-head"><span class="tcard-title">${ic('school')}${esc(name.replace('[DEMO] ', ''))}</span>
+          ${[...people.values()].some((p) => p.info.demoFailed) ? `<span class="tag overdue" title="${esc([...people.values()].map((p) => p.info.demoFailed).find(Boolean))}">✕ Demo nahi lag sakta</span>` : ''}
           <span class="card-prompt"><input data-sender placeholder="Sender naam" value="${esc(savedSender())}" style="width:110px">
             ${[...people.values()].some((p) => p.tasks.some((t) => t.channel === 'email'))
               ? `<button class="btn small" data-copycollege="${esc(name)}" title="Is ${esc(seg.unit.toLowerCase())} ke saare emails ka Claude prompt copy karo">${ic('copy')}Prompt</button>` : ''}</span>
@@ -266,6 +267,7 @@ async function renderToday() {
       if (!senderName) return toast('Pehle sender naam likho');
       const college = b.dataset.copycollege;
       const r = await buildPrompt(college, senderName);
+      if (r.demoFailed && r.demoFailed.length) { toast(`${r.demoFailed.join(', ')}: is site par Botza demo nahi lag sakta`); render(); }
       if (!r.count) return toast(r.skipped[0] || `Is ${seg.unit.toLowerCase()} ka koi email ready nahi`);
       await navigator.clipboard.writeText(r.prompt);
       toast(`${college.replace('[DEMO] ', '')}: ${r.count} emails ka prompt copy ho gaya ✓`);
@@ -490,6 +492,7 @@ async function renderHistory() {
       <td>${x.reached || x.removed ? `${x.reached}${x.removed ? ` <small class="muted">(${x.removed} hata diye)</small>` : ''}` : '<span class="muted">—</span>'}</td>
       <td>${x.first ? prettyDate(x.first) : '—'}</td>
       <td>${x.last ? prettyDate(x.last) : '—'}</td>
+      <td>${x.demoUrl ? `<a href="${esc(safeUrl(x.demoUrl))}" target="_blank" rel="noopener">Demo link ↗</a> <button class="link" data-copy="${esc(x.demoUrl)}">Copy</button>` : x.demoFailed ? `<span class="tag overdue" title="${esc(x.demoFailed)}">✕ Nahi lag sakta</span>` : '<span class="muted">—</span>'}</td>
       <td>${x.live ? '<span class="tag due">Chal raha hai</span>' : '<span class="tag">Poora ho gaya, hata diya</span>'}</td>
     </tr>`;
   view.innerHTML = `
@@ -501,7 +504,7 @@ async function renderHistory() {
             <div style="margin-top:6px"><button class="btn primary small" id="histAddBtn">History me jodo</button> <small class="muted">sirf naam judte hain, date aur contacts ka count khali rahega</small></div></div></details>
         ${list.length ? `<div style="margin:8px 0"><input id="histSearch" type="search" placeholder="${esc(seg.unit)} ka naam dhundo..." autocomplete="off" style="min-width:260px"></div>
         <div class="grid-wrap"><table class="grid">
-          <thead><tr><th>${esc(seg.unit)}</th><th>Owner</th><th>Contacts reach kiye</th><th>Pehla message</th><th>Last message</th><th>Status</th></tr></thead>
+          <thead><tr><th>${esc(seg.unit)}</th><th>Owner</th><th>Contacts reach kiye</th><th>Pehla message</th><th>Last message</th><th>Demo link</th><th>Status</th></tr></thead>
           <tbody>${list.map(row).join('')}</tbody>
         </table></div>` : '<div class="card-done">Abhi koi history nahi, jaise hi koi message bhejoge yahan dikhega</div>'}
       </div></div>`;
@@ -511,6 +514,7 @@ async function renderHistory() {
     const r = await api('POST', '/history', { names });
     toast(`${r.added} judh gaye${r.skipped ? `, ${r.skipped} pehle se app me hain` : ''}`); render();
   });
+  view.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => { navigator.clipboard.writeText(b.dataset.copy); toast('Copied'); });
   const hs = document.getElementById('histSearch');
   if (hs) hs.oninput = () => {
     const q = hs.value.trim().toLowerCase();
@@ -548,8 +552,8 @@ async function renderColleges() {
     <div class="card college">
       <h3><span>${esc(col.name)} <span class="muted">${esc(col.city || '')}</span>
           ${col.website ? `<small><a href="${esc(safeUrl(col.website))}" target="_blank" rel="noopener">${esc(col.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a></small>` : ''}
-          ${col.demoUrl ? `<small><a href="${esc(safeUrl(col.demoUrl))}" target="_blank" rel="noopener">Demo link ↗</a></small>` : ''}</span>
-        <span><button class="btn" data-website="${col._id}" data-cur="${esc(col.website || '')}">${col.website ? 'Website' : '+ Website'}</button>${col.website ? ` <button class="btn" data-demo="${col._id}">${col.demoUrl ? 'Demo link dobara' : 'Demo link'}</button>` : ''} <button class="btn" data-addc="${col._id}">+ Contact</button> <button class="btn danger" data-delcol="${col._id}">Delete</button></span></h3>
+          ${col.demoStatus === 'failed' ? `<small><span class="tag overdue" title="${esc(col.demoError || '')}">✕ Demo nahi lag sakta</span></small>` : col.demoUrl ? `<small><a href="${esc(safeUrl(col.demoUrl))}" target="_blank" rel="noopener">Demo link ↗</a></small>` : ''}</span>
+        <span><button class="btn" data-website="${col._id}" data-cur="${esc(col.website || '')}">${col.website ? 'Website' : '+ Website'}</button>${col.website ? ` <button class="btn" data-demo="${col._id}">${col.demoUrl || col.demoStatus === 'failed' ? 'Demo link dobara' : 'Demo link'}</button>` : ''} <button class="btn" data-addc="${col._id}">+ Contact</button> <button class="btn danger" data-delcol="${col._id}">Delete</button></span></h3>
       <div class="grid-wrap"><table class="grid">
         <thead>
           <tr><th></th><th class="grp" colspan="${settings.emailSteps.length}">EMAIL</th><th class="grp" colspan="${settings.linkedinSteps.length}">LINKEDIN</th><th></th></tr>

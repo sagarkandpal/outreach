@@ -125,16 +125,16 @@ router.patch('/colleges/:id', wrap(async (req, res) => {
 router.patch('/colleges/:id/website', wrap(async (req, res) => {
   const website = normalizeWebsite(req.body.website);
   if (String(req.body.website || '').trim() && !website) return res.status(400).json({ error: 'Website ka link sahi nahi hai' });
-  res.json(await College.findByIdAndUpdate(req.params.id, { website, demoUrl: '' }, { new: true }));
+  res.json(await College.findByIdAndUpdate(req.params.id, { website, demoUrl: '', demoStatus: '', demoError: '' }, { new: true }));
 }));
 
 // make (or reuse) the demo link for one organisation
 router.post('/colleges/:id/demo', wrap(async (req, res) => {
   const college = await College.findById(req.params.id);
   if (!college) return res.status(404).json({ error: 'Not found' });
-  if (req.body.fresh) { college.demoUrl = ''; await College.updateOne({ _id: college._id }, { demoUrl: '' }); }
+  if (req.body.fresh) { Object.assign(college, { demoUrl: '', demoStatus: '', demoError: '' }); await College.updateOne({ _id: college._id }, { demoUrl: '', demoStatus: '', demoError: '' }); }
   const r = await ensureDemoLink(college);
-  if (r.error) return res.status(502).json({ error: r.error });
+  if (r.error) return res.status(502).json({ error: r.error, failed: !!r.failed });
   res.json({ url: r.url });
 }));
 
@@ -224,6 +224,7 @@ async function buildToday(req, settings, onlyChannel, now = new Date(), pre) {
   const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
   const cowner = Object.fromEntries(colleges.map((c) => [String(c._id), c.owner || '']));
   const cdemo = Object.fromEntries(colleges.map((c) => [String(c._id), c.demoUrl || '']));
+  const cdemoFail = Object.fromEntries(colleges.filter((c) => c.demoStatus === 'failed').map((c) => [String(c._id), c.demoError || 'is site par demo nahi lag sakta']));
   const items = [];
   for (const raw of contacts) {
     const c = dec(req, raw, settings, now);
@@ -248,7 +249,7 @@ async function buildToday(req, settings, onlyChannel, now = new Date(), pre) {
         contactId: c._id, collegeId: c.collegeId, college, owner: cowner[String(c.collegeId)] || '', role: c.role, name: c.name,
         email: c.email, linkedinUrl: c.linkedinUrl, channel, stepIndex: i, stepLabel: steps[i].label,
         state: cells[i].state, daysLate: cells[i].days || 0, isFirst: i === 0,
-        message: needsDemo && demoLink ? fillDemoLink(message, demoLink) : message, demoPending: needsDemo && !demoLink,
+        message: needsDemo && demoLink ? fillDemoLink(message, demoLink) : message, demoPending: needsDemo && !demoLink, demoFailed: cdemoFail[String(c.collegeId)] || '',
         attachment: channel === 'email' ? String(steps[i].attachment || '').trim() : '',
       });
     }
@@ -342,15 +343,15 @@ router.post('/prompt/emails', wrap(async (req, res) => {
   const { senderName, college } = req.body || {};
   const items = (await buildToday(req, settings)).filter((i) => !college || i.college === college);
   // demo links for recipients whose step draft uses the placeholder (generated once per organisation, then cached)
-  const demoLinks = {}, demoErrors = {};
+  const demoLinks = {}, demoErrors = {}, demoFailed = new Set();
   for (const t of items) {
     const key = String(t.collegeId);
     if (t.channel !== 'email' || !hasPlaceholder(settings.emailSteps[t.stepIndex] && settings.emailSteps[t.stepIndex].draft) || key in demoLinks || key in demoErrors) continue;
     const r = await ensureDemoLink(await College.findById(t.collegeId));
-    if (r.url) demoLinks[key] = r.url; else demoErrors[key] = r.error;
+    if (r.url) demoLinks[key] = r.url; else { demoErrors[key] = r.error; if (r.failed) demoFailed.add(t.college); }
   }
   for (const t of items) { t.demoLink = demoLinks[String(t.collegeId)] || ''; t.demoError = demoErrors[String(t.collegeId)] || ''; }
-  res.json(buildEmailPrompt(items, settings.emailSteps, senderName, req.seg.unit));
+  res.json({ ...buildEmailPrompt(items, settings.emailSteps, senderName, req.seg.unit), demoFailed: [...demoFailed] });
 }));
 
 // ---------- finished list: everyone whose Email or LinkedIn steps are all sent (candidates to delete for good) ----------
@@ -393,7 +394,7 @@ router.post('/contacts/delete-bulk', wrap(async (req, res) => {
       filter: { segment: req.seg.slug, key: o.name.trim().toLowerCase() },
       update: {
         $setOnInsert: { name: o.name.trim() },
-        $set: { city: o.city || '', owner: o.owner || '' },
+        $set: { city: o.city || '', owner: o.owner || '', ...(o.demoUrl ? { demoUrl: o.demoUrl } : {}) },
         $inc: { contactsReached: mine.length },
         $min: { firstSentAt: new Date(Math.min(...when)) },
         $max: { lastSentAt: new Date(Math.max(...when)) },
@@ -442,7 +443,7 @@ router.get('/history', wrap(async (req, res) => {
   const map = new Map();
   const entry = (name, city, owner) => {
     const k = String(name || '').trim().toLowerCase();
-    if (!map.has(k)) map.set(k, { name: String(name || '').trim(), city: city || '', owner: owner || '', reached: 0, removed: 0, live: false, first: null, last: null });
+    if (!map.has(k)) map.set(k, { name: String(name || '').trim(), city: city || '', owner: owner || '', reached: 0, removed: 0, live: false, first: null, last: null, demoUrl: '', demoFailed: '' });
     return map.get(k);
   };
   const span = (e, lo, hi) => { e.first = e.first === null ? lo : Math.min(e.first, lo); e.last = e.last === null ? hi : Math.max(e.last, hi); };
@@ -451,11 +452,14 @@ router.get('/history', wrap(async (req, res) => {
     if (!groups) continue;
     const e = entry(o.name, o.city, o.owner);
     e.live = true; e.reached += groups.length;
+    if (o.demoUrl) e.demoUrl = o.demoUrl;
+    if (o.demoStatus === 'failed') e.demoFailed = o.demoError || 'is site par demo nahi lag sakta';
     const all = groups.flat(); span(e, Math.min(...all), Math.max(...all));
   }
   for (const a of archived) {
     const e = entry(a.name, a.city, a.owner);
     e.removed += a.contactsReached; e.reached += a.contactsReached;
+    if (a.demoUrl && !e.demoUrl) e.demoUrl = a.demoUrl;
     if (a.firstSentAt) span(e, new Date(a.firstSentAt).getTime(), new Date(a.lastSentAt || a.firstSentAt).getTime());
   }
   res.json([...map.values()].sort((a, b) => (b.last || 0) - (a.last || 0)).map((e) => ({ ...e, first: e.first && new Date(e.first), last: e.last && new Date(e.last) })));
