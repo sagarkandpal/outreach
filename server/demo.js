@@ -33,8 +33,10 @@ async function ensureDemoLink(college) {
     });
     const body = await r.json().catch(() => ({}));
     if (!r.ok || !body.previewUrl) return { error: `demo link nahi bana (${body.error || r.status})` };
-    await College.updateOne({ _id: college._id, website: college.website }, { $set: { demoUrl: body.previewUrl } });
-    return { url: body.previewUrl };
+    // the service may report an http:// BASE_URL; always hand out the link on the same base we called
+    const url = `${base}${new URL(body.previewUrl).pathname}`;
+    await College.updateOne({ _id: college._id, website: college.website }, { $set: { demoUrl: url } });
+    return { url };
   } catch (e) {
     return { error: `demo service tak nahi pahunch paya (${e.name === 'TimeoutError' ? 'timeout' : e.message})` };
   }
