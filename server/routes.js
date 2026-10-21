@@ -5,6 +5,13 @@ const { buildEmailPrompt, firstName } = require('./prompt');
 const { hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink } = require('./demo');
 
 const router = express.Router();
+
+// make demo links ahead of time (one organisation at a time, after the response is sent) so the Follow-up 3 prompt is instant later
+const prewarmDemoLinks = (colleges) => {
+  const todo = colleges.filter((c) => c.website && !c.demoUrl);
+  if (!todo.length) return;
+  (async () => { for (const c of todo) await ensureDemoLink(c); })().catch(() => {});
+};
 const wrap = (fn) => (req, res) => fn(req, res).catch((e) => res.status(500).json({ error: e.message }));
 
 // "YYYY-MM-DD" -> local noon (avoids timezone day-shifts); missing -> now
@@ -106,6 +113,7 @@ router.post('/colleges', wrap(async (req, res) => {
   const rows = contacts.filter((c) => c.name || c.email || c.linkedinUrl || c.role);
   if (rows.length) await Contact.insertMany(rows.map((c) => ({ ...c, collegeId: college._id })));
   res.json(college);
+  prewarmDemoLinks([college]);
 }));
 
 router.patch('/colleges/:id', wrap(async (req, res) => {
@@ -467,6 +475,7 @@ router.post('/import', wrap(async (req, res) => {
   const rows = req.body.rows || [];
   const cache = {};
   let colleges = 0, contacts = 0, skipped = 0;
+  const touched = new Map();
   for (const r of rows) {
     const cn = (r.college || '').trim();
     if (!cn) continue;
@@ -477,6 +486,7 @@ router.post('/import', wrap(async (req, res) => {
       else if (website && !col.website) { col.website = website; await col.save(); }
       cache[cn.toLowerCase()] = col;
     }
+    touched.set(String(cache[cn.toLowerCase()]._id), cache[cn.toLowerCase()]);
     const collegeId = cache[cn.toLowerCase()]._id;
     const email = (r.email || '').trim(), linkedinUrl = (r.linkedin || '').trim();
     const name = (r.name || '').trim(), role = (r.role || '').trim();
@@ -488,6 +498,7 @@ router.post('/import', wrap(async (req, res) => {
     contacts++;
   }
   res.json({ colleges, contacts, skipped });
+  prewarmDemoLinks([...touched.values()]);
 }));
 
 // ---------- search (email / linkedin / name / college / role) ----------
