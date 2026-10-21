@@ -231,6 +231,7 @@ async function buildToday(req, settings, onlyChannel, now = new Date(), pre) {
 router.get('/today', wrap(async (req, res) => res.json(await buildToday(req, await getSettings(req.seg.slug), 'email'))));
 
 // ---------- linkedin tab (startups) ----------
+const COLLEGE_LINKEDIN_START = new Date(2026, 9, 21); // local midnight, 21 Oct 2026
 // everything the Email + LinkedIn sub-tabs need, from one load of the segment
 async function board(req) {
   const [settings, pre] = await Promise.all([getSettings(req.seg.slug), loadActive(req)]);
@@ -242,7 +243,9 @@ async function board(req) {
   const row = (c) => ({
     contactId: c._id, college: cname[String(c.collegeId)] || '?', owner: cowner[String(c.collegeId)] || '', name: c.name, role: c.role, linkedinUrl: c.linkedinUrl,
   });
-  const open = pre.contacts.filter((c) => !c.linkedinConnectedAt && (c.name || c.linkedinUrl));
+  // Colleges: requests sent before the LinkedIn tracking started (2026-10-21) are closed; only newer ones are tracked
+  const legacy = (c) => req.seg.slug === 'college' && c.linkedinSent.length && new Date(c.linkedinSent[0]) < COLLEGE_LINKEDIN_START;
+  const open = pre.contacts.filter((c) => !c.linkedinConnectedAt && (c.name || c.linkedinUrl) && !legacy(c));
   const pending = open.filter((c) => c.linkedinSent.length)
     .map((c) => ({ ...row(c), sentAt: c.linkedinSent[0], daysAgo: Math.max(0, Math.round((now - new Date(c.linkedinSent[0])) / 86400000)) }))
     .sort((a, b) => b.daysAgo - a.daysAgo);
