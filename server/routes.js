@@ -259,7 +259,7 @@ async function buildToday(req, settings, onlyChannel, now = new Date(), pre) {
         email: c.email, linkedinUrl: c.linkedinUrl, channel, stepIndex: i, stepLabel: steps[i].label,
         state: cells[i].state, daysLate: cells[i].days || 0, isFirst: i === 0,
         message: needsDemo && demoLink ? fillDemoLink(message, demoLink) : message, demoPending: needsDemo && !demoLink, demoFailed: cdemoFail[String(c.collegeId)] || '',
-        attachment: channel === 'email' ? String(steps[i].attachment || '').trim() : '',
+        attachment: channel === 'email' && !String(steps[i].attachmentUrl || '').trim() ? String(steps[i].attachment || '').trim() : '',
       });
     }
   }

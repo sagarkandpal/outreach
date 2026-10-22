@@ -21,16 +21,20 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
     if (!t.email) skipped.push(`${t.college} / ${t.name || t.role}: email nahi hai`);
     else if (!draft) skipped.push(`${t.college} / ${t.name || t.role}: "${t.stepLabel}" ka draft Settings mein nahi hai`);
     else if (hasPlaceholder(draft) && !t.demoLink) skipped.push(`${t.college} / ${t.name || t.role}: demo link nahi ban paya (${t.demoError || 'website nahi hai'})`);
+    else if (/\{attachment_link\}/i.test(draft) && !String(steps[t.stepIndex].attachmentUrl || '').trim()) skipped.push(`${t.college} / ${t.name || t.role}: "${t.stepLabel}" ka attachment link Settings mein nahi hai`);
     else if (/\{first_name\}/.test(draft) && !firstName(t.name)) skipped.push(`${t.college} / ${t.role}: contact ka naam nahi hai, draft mein {first_name} hai`);
     else ready.push(t);
   }
   const missingDrafts = [...new Set(emailItems.filter((t) => !(steps[t.stepIndex] && steps[t.stepIndex].draft || '').trim()).map((t) => t.stepLabel))];
 
   const usedSteps = [...new Set(ready.map((t) => t.stepIndex))].sort((a, b) => a - b);
-  const attachOf = (i) => String(steps[i].attachment || '').trim().replace(/[\r\n|]+/g, ' ');
+  const urlOf = (i) => String(steps[i].attachmentUrl || '').trim();
+  // a hosted link replaces the manual attachment: such a step is sent directly
+  const attachOf = (i) => (urlOf(i) ? '' : String(steps[i].attachment || '').trim().replace(/[\r\n|]+/g, ' '));
+  const linkText = (i) => String(steps[i].attachment || '').trim().replace(/[\[\]\r\n|]+/g, ' ') || 'Attachment';
   const modeOf = (i) => (attachOf(i) ? `DRAFT_ONLY (attach: ${attachOf(i)})` : 'SEND');
   const hasDraftOnly = usedSteps.some((i) => attachOf(i));
-  const drafts = usedSteps.map((i) => `### ${steps[i].label}  [Mode: ${modeOf(i)}]\n<<<DRAFT\n${steps[i].draft.trim().replace(/\{sender_name\}/g, () => sender)}\nDRAFT>>>`).join('\n\n');
+  const drafts = usedSteps.map((i) => `### ${steps[i].label}  [Mode: ${modeOf(i)}]\n<<<DRAFT\n${steps[i].draft.trim().replace(/\{sender_name\}/g, () => sender).replace(/\{attachment_link\}/gi, () => `[${linkText(i)}](${urlOf(i)})`)}\nDRAFT>>>`).join('\n\n');
   // per-recipient demo link, only for steps whose draft uses {demo_link}
   const anyDemo = ready.some((t) => hasPlaceholder(steps[t.stepIndex].draft));
   const cell = (s) => String(s).replace(/\s*[|\r\n]+\s*/g, ' ');

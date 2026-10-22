@@ -6,6 +6,8 @@ const stepSchema = new mongoose.Schema(
     label: String, gapDays: { type: Number, default: 2 }, draft: { type: String, default: '' },
     // email only: non-empty = this step needs a manual attachment, so Claude only creates a Gmail draft
     attachment: { type: String, default: '' },
+    // email only: hosted link of that attachment; when set the step is sent directly and {attachment_link} becomes a clickable link named after `attachment`
+    attachmentUrl: { type: String, default: '' },
   },
   { _id: false }
 );

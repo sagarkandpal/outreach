@@ -28,7 +28,7 @@ Which of these does your team type out most often?
 - Do you work with companies like ours?
 - How long does setup take?
 
-Botza answers questions like these on your website from your own knowledge base, so people get a reply and your team gets time back. The attached brochure explains how.
+Botza answers questions like these on your website from your own knowledge base, so people get a reply and your team gets time back. The brochure explains how: {attachment_link}.
 
 Open to a 15-minute walkthrough?
 
@@ -75,7 +75,7 @@ A fair question you may be asking: we already have a handbook and an FAQ page, s
 
 Handbook or FAQ page: the visitor or employee has to find the right page first. Botza: they ask in their own words and get an answer drawn from the documents you provide.
 
-The attached feature comparison sheet lays out what Botza covers. Reply with the question your team answers most, and I'll show you how Botza handles it.
+The feature comparison sheet lays out what Botza covers: {attachment_link}. Reply with the question your team answers most, and I'll show you how Botza handles it.
 
 Best,
 {sender_name}`,
