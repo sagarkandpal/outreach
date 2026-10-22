@@ -127,8 +127,8 @@ Short video here: https://drive.google.com/file/d/1l3wG95_mcjCa4kSPCZKQEWn5ko8Eo
 If it looks relevant for {college}, would you be open to a 15-minute demo this week?`,
   },
   {
-    label: 'Follow-up 2', gapDays: 2,
-    draft: `{first_name}, following up on the video. I've attached a short brochure that explains how Botza works for colleges: it answers student and parent questions on your website, and there's an HR version for staff too.
+    label: 'Follow-up 2', gapDays: 2, attachment: 'Brochure',
+    draft: `{first_name}, following up on the video. I've put together a short brochure that explains how Botza works for colleges ({attachment_link}): it answers student and parent questions on your website, and there's an HR version for staff too.
 
 If it looks relevant for {college}, would you be open to a quick 15-minute call?`,
   },

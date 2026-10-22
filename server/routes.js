@@ -250,6 +250,7 @@ async function buildToday(req, settings, onlyChannel, now = new Date(), pre) {
         ? String(steps[i].draft || '').trim()
             .replace(/\{first_name\}/g, firstName(c.name))
             .replace(/\{(?:college|company)\}/g, () => college.replace('[DEMO] ', ''))
+            .replace(/\{attachment_link\}/gi, (m) => String(steps[i].attachmentUrl || '').trim() || m)
         : '';
       // demo link is only filled from the cache here; the app asks /colleges/:id/demo when it is still missing
       const demoLink = cdemo[String(c.collegeId)];

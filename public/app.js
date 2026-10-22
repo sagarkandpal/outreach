@@ -836,8 +836,11 @@ async function renderSettings() {
     email: settings.emailSteps.map((s) => s.draft || ''),
     linkedin: settings.linkedinSteps.map((s) => s.draft || ''),
   };
-  const attachmentUrls = settings.emailSteps.map((s) => s.attachmentUrl || '');
-  const attachments = settings.emailSteps.map((s) => s.attachment || ''); // email only; non-empty = Claude drafts, user sends
+  // per step: attachment name + hosted link; email: link in body sends directly, no link = Claude drafts, user attaches. LinkedIn: {attachment_link} becomes the url
+  const attachmentUrls = { email: settings.emailSteps.map((s) => s.attachmentUrl || ''), linkedin: settings.linkedinSteps.map((s) => s.attachmentUrl || '') };
+  const attachments = { email: settings.emailSteps.map((s) => s.attachment || ''), linkedin: settings.linkedinSteps.map((s) => s.attachment || '') };
+  const attachBoxes = (ch, i) => `<label class="muted" style="margin-left:12px">📎 Attachment: <input data-attach="${ch}:${i}" value="${esc(attachments[ch][i] || '')}" placeholder="Naam, e.g. Brochure" style="width:180px"></label>
+        <label class="muted" style="margin-left:8px">🔗 Link: <input data-attach-url="${ch}:${i}" value="${esc(attachmentUrls[ch][i] || '')}" placeholder="Drive public link (draft me {attachment_link})" style="width:300px"></label>`;
   const titles = { email: '📧 Email', linkedin: '💼 LinkedIn' };
   const firstNames = { email: 'Primary Email', linkedin: 'Connection Note' };
   const noFollow = (ch) => ch === 'linkedin' && seg.linkedinMax <= 1; // college: LinkedIn = connection note only
@@ -875,12 +878,12 @@ async function renderSettings() {
       <h3>✍️ Email drafts</h3>
       <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{company}</code> (= ${esc(seg.unit.toLowerCase())} ka naam; <code>{college}</code> bhi chalta hai), <code>{sender_name}</code> (Aaj ka kaam me college card ke "Sender naam" box se aata hai — Email prompt aur LinkedIn 📋 dono me). College card ka "📋 Prompt" isi draft ko Claude ko dega.</p>
       ${drafts.email.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.email : 'Follow-up ' + i}</b>
-        <label class="muted" style="margin-left:12px">📎 Attachment: <input data-attach="${i}" value="${esc(attachments[i] || '')}" placeholder="Naam, e.g. Brochure" style="width:180px"></label>
-        <label class="muted" style="margin-left:8px">🔗 Link: <input data-attach-url="${i}" value="${esc(attachmentUrls[i] || '')}" placeholder="Drive public link (draft me {attachment_link})" style="width:300px"></label>
+        ${attachBoxes('email', i)}
         <textarea data-draft="email:${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
       <h3>💼 LinkedIn drafts</h3>
       <p class="muted">Har step ka message yahan paste karo. Placeholders: <code>{first_name}</code>, <code>{company}</code> (= ${esc(seg.unit.toLowerCase())} ka naam; <code>{college}</code> bhi chalta hai), <code>{sender_name}</code>. Aaj ka kaam me LinkedIn task par 📋 dabane se ye copy hoga.</p>
       ${drafts.linkedin.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.linkedin : 'Follow-up ' + i}</b>
+        ${attachBoxes('linkedin', i)}
         <textarea data-draft="linkedin:${i}" placeholder="Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
       <br><button class="btn primary" id="saveSettings">Save</button></div>`;
 
@@ -890,11 +893,14 @@ async function renderSettings() {
       draft[ch].gaps.length = n;
       while (drafts[ch].length < n + 1) drafts[ch].push('');
       drafts[ch].length = n + 1;
-      if (ch === 'email') { while (attachments.length < n + 1) attachments.push(''); attachments.length = n + 1; while (attachmentUrls.length < n + 1) attachmentUrls.push(''); attachmentUrls.length = n + 1; }
+      while (attachments[ch].length < n + 1) attachments[ch].push('');
+      attachments[ch].length = n + 1;
+      while (attachmentUrls[ch].length < n + 1) attachmentUrls[ch].push('');
+      attachmentUrls[ch].length = n + 1;
     };
     const sync = () => {
-      view.querySelectorAll('[data-attach]').forEach((el) => (attachments[el.dataset.attach] = el.value.trim()));
-      view.querySelectorAll('[data-attach-url]').forEach((el) => (attachmentUrls[el.dataset.attachUrl] = el.value.trim()));
+      view.querySelectorAll('[data-attach]').forEach((el) => { const [ch, i] = el.dataset.attach.split(':'); attachments[ch][i] = el.value.trim(); });
+      view.querySelectorAll('[data-attach-url]').forEach((el) => { const [ch, i] = el.dataset.attachUrl.split(':'); attachmentUrls[ch][i] = el.value.trim(); });
       view.querySelectorAll('[data-gap]').forEach((el) => (draft[el.dataset.gap].gaps[el.dataset.i] = Math.max(0, Number(el.value) || 0)));
       view.querySelectorAll('[data-draft]').forEach((el) => {
         const [ch, i] = el.dataset.draft.split(':');
@@ -936,8 +942,8 @@ async function renderSettings() {
     document.getElementById('saveSettings').onclick = () => guard(async () => {
       sync();
       const build = (ch) => [
-        { label: firstNames[ch], gapDays: 0, draft: drafts[ch][0], ...(ch === 'email' && { attachment: attachments[0] || '', attachmentUrl: attachmentUrls[0] || '' }) },
-        ...(noFollow(ch) ? [] : draft[ch].gaps).map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g, draft: drafts[ch][i + 1], ...(ch === 'email' && { attachment: attachments[i + 1] || '', attachmentUrl: attachmentUrls[i + 1] || '' }) })),
+        { label: firstNames[ch], gapDays: 0, draft: drafts[ch][0], attachment: attachments[ch][0] || '', attachmentUrl: attachmentUrls[ch][0] || '' },
+        ...(noFollow(ch) ? [] : draft[ch].gaps).map((g, i) => ({ label: `Follow-up ${i + 1}`, gapDays: g, draft: drafts[ch][i + 1], attachment: attachments[ch][i + 1] || '', attachmentUrl: attachmentUrls[ch][i + 1] || '' })),
       ];
       await api('PUT', '/settings', { emailSteps: build('email'), linkedinSteps: build('linkedin') });
       toast('Saved'); render();

@@ -30,6 +30,7 @@ Server start hote hi terminal me ye line aani chahiye:
 
 ## LinkedIn drafts
 Settings -> "LinkedIn drafts" me har step ka message paste karo. Aaj ka kaam me LinkedIn task par step ke aage **📋** dabao -> draft (naam/college bhara hua) copy ho jayega. Bhejne ke baad **✓ Bhej diya** khud dabana.
+Brochure/sheet ke liye step ke saamne 📎 naam aur 🔗 Drive link daalo, draft me `{attachment_link}` likho: email me clickable link banta hai (aur seedha send hota hai), LinkedIn copy me URL aata hai.
 
 ## PDF se drafts import (Settings)
 1. Settings -> "PDF / document se drafts import karo" -> **Claude ke liye prompt copy karo**.
