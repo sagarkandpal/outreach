@@ -36,7 +36,7 @@ Best,
 {sender_name}`,
   },
   {
-    label: 'Follow-up 2', gapDays: 2, attachment: 'Demo video link (paste [Demo Video Link])',
+    label: 'Follow-up 2', gapDays: 2, attachment: '',
     draft: `Subject: Where policy questions go as you grow
 
 Hi {first_name},
@@ -45,7 +45,7 @@ Picture HR on a Monday morning. Three messages are already waiting: what the not
 
 That's the problem Botza's internal chatbot solves: HR uploads the policy documents, and employees ask in plain language and get answers from them.
 
-Have a look when you have a minute: [Demo Video Link]
+Have a look when you have a minute: [Demo video link](https://drive.google.com/file/d/1HchTj9NmLYdqeLX2nUpIcgpZkZ1WPmUr/view?usp=sharing)
 
 Thanks,
 {sender_name}`,
@@ -104,7 +104,7 @@ const linkedinSteps = [
     label: 'Follow-up 1', gapDays: 2,
     draft: `{first_name}, thanks for connecting. Rather than explain Botza, I'd like you to see it. It answers website visitors' questions from a company's own documents, and there's an HR version for employees too.
 
-Short video here: [Demo Video Link]
+Short video here: https://drive.google.com/file/d/1HchTj9NmLYdqeLX2nUpIcgpZkZ1WPmUr/view?usp=sharing
 
 If it looks relevant for {company}, would you be open to a 15-minute demo this week?`,
   },

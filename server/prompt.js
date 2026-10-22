@@ -37,7 +37,7 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
   const rows = ready.map((t, n) => `${n + 1} | ${cell(t.college.replace('[DEMO] ', ''))} | ${cell(firstName(t.name))} | ${t.email} | ${t.stepLabel} | ${modeOf(t.stepIndex)}${anyDemo ? ` | ${t.demoLink || '-'}` : ''}`).join('\n');
   const senderRule = sender ? `\n- Draft mein sender (mera) naam "${sender}" hi rehna chahiye; use badalna mat.` : '';
   const draftRules = hasDraftOnly ? `
-- Mode "SEND" wale recipients ko email seedha bhej do.
+- Mode "SEND" wale recipients ko email seedha bhej do. Inke liye Gmail draft mat banao, draft sirf DRAFT_ONLY wale recipients ke liye banta hai.
 - Mode "DRAFT_ONLY" wale recipients ko email BHEJNA NAHI hai. Unke liye sirf Gmail mein draft banao (same subject/body, recipient set), kyunki main attachment khud lagaunga. Draft ka link connector ke create_draft result ke \`viewUrl\` field se hu-ba-hu copy karo (khud se link mat banao). Agar \`viewUrl\` na mile to link khali chhod do aur note mein likho.` : '';
   const tableRule = hasDraftOnly
     ? `columns: # | ${unit} | Name | Email | Step | Action (Sent / Draft / Failed) | Draft link (clickable) | Attachment lagana hai. SEND wale rows mein Action = Sent, link aur attachment khali. DRAFT_ONLY wale rows mein Action = Draft, viewUrl se mila link do aur "attach:" ke baad likha attachment ka naam likho.`
@@ -49,8 +49,8 @@ Rules:
 - Har recipient ko sirf uske Step ka draft bhejo (Primary ya Follow-up N). Kisi aur step ka draft mat bhejna.${draftRules}
 - Draft ke andar {first_name} ki jagah recipient ka First name, aur {college} / {company} ki jagah ${unit} ka naam daalo. Baaki draft ka text bilkul same rakho, kuch add/edit mat karo.${senderRule}
 ${anyDemo ? '- Draft mein {demo_link} / [demo link] (ya [Website Link With Botza]) ki jagah us recipient ki "Demo link" daalo (Recipients list me di hui, hu-ba-hu, badalna mat). Link clickable rakho.\n' : ''}- Draft ki pehli line "Subject:" se shuru ho to wo email ka subject hai, baaki body hai.
-- Draft mein jahan [text](url) jaisa markdown link ho, use email mein clickable hyperlink bana ke bhejo: email ki HTML body use karo (har paragraph <p> mein, link <a href="url">text</a>), plain text body mein markdown kabhi mat bhejo. Agar connector HTML body support nahi karta to us email ko bhejo mat, sirf Gmail draft banao aur table mein "Failed: HTML body unsupported" likho.
-- Har email alag alag bhejo (koi CC/BCC ya group mail nahi).
+- Draft mein jahan [text](url) jaisa markdown link ho, use email mein clickable hyperlink bana ke bhejo: email ki HTML body use karo (har paragraph <p> mein, link <a href="url">text</a>), plain text body mein markdown kabhi mat bhejo. Link ka sirf text (jaise "Demo video link") dikhna chahiye, raw URL ya "[text](url)" ke brackets email mein dikhne nahi chahiye, aur href mein URL hu-ba-hu wahi ho jo draft mein hai. Agar connector HTML body support nahi karta to us email ko bhejo mat, Gmail draft bhi mat banao, bas table mein "Failed: HTML body unsupported" likho.
+- Har email alag alag bhejo (koi CC/BCC ya group mail nahi).${hasDraftOnly ? '' : '\n- Gmail mein draft mat banao, har email seedha send karo.'}
 - Ambiguous kuch ho to guess mat karo; wo email mat bhejo aur table mein "Failed" likho.
 - "Sent" sirf tab likho jab email Gmail se sach mein bhej diya gaya ho (draft bana dena ya queue karna "sent" nahi hai). Zara bhi shak ho ya error aaye to "Failed" likho aur wajah batao.
 

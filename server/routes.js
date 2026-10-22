@@ -7,10 +7,18 @@ const { hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink } = requi
 const router = express.Router();
 
 // make demo links ahead of time (one organisation at a time, after the response is sent) so the Follow-up 3 prompt is instant later
+// one run at a time; a transient failure (service asleep / timeout) is retried once, and opening the list picks up whatever is still missing
+let prewarming = false;
 const prewarmDemoLinks = (colleges) => {
-  const todo = colleges.filter((c) => c.website && !c.demoUrl);
-  if (!todo.length) return;
-  (async () => { for (const c of todo) await ensureDemoLink(c); })().catch(() => {});
+  const todo = colleges.filter((c) => c.website && !c.demoUrl && c.demoStatus !== 'failed');
+  if (!todo.length || prewarming) return;
+  prewarming = true;
+  (async () => {
+    for (const c of todo) {
+      const r = await ensureDemoLink(c);
+      if (!r.url && !r.failed) { await new Promise((ok) => setTimeout(ok, 5000)); await ensureDemoLink(c); }
+    }
+  })().catch(() => {}).finally(() => { prewarming = false; });
 };
 const wrap = (fn) => (req, res) => fn(req, res).catch((e) => res.status(500).json({ error: e.message }));
 
@@ -104,6 +112,7 @@ router.get('/colleges', wrap(async (req, res) => {
   const byCollege = {};
   contacts.forEach((c) => (byCollege[c.collegeId] ||= []).push(dec(req, c, settings)));
   res.json(colleges.map((c) => ({ ...c, contacts: byCollege[c._id] || [] })));
+  prewarmDemoLinks(colleges);
 }));
 
 router.post('/colleges', wrap(async (req, res) => {
