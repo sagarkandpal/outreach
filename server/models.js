@@ -62,8 +62,10 @@ const contactSchema = new mongoose.Schema(
 
 const genericSteps = (n) => [{ label: 'Primary Email', gapDays: 0 }, ...Array.from({ length: n }, (_, i) => ({ label: `Follow-up ${i + 1}`, gapDays: 2 }))];
 
+const collegeLinkedinSteps = () => [{ label: 'Connection Note', gapDays: 0 }, ...startup.linkedinSteps.slice(1).map((st) => ({ label: st.label, gapDays: st.gapDays, draft: st.draft }))];
+
 const DEFAULT_SEGMENTS = [
-  { slug: 'college', name: 'Colleges', unit: 'College', unitPlural: 'Colleges', linkedinMax: 1, order: 0 },
+  { slug: 'college', name: 'Colleges', unit: 'College', unitPlural: 'Colleges', linkedinMax: 3, order: 0 },
   { slug: 'startup', name: 'Startups', unit: 'Company', unitPlural: 'Companies', linkedinMax: 3, order: 1 },
 ];
 
@@ -73,7 +75,7 @@ const settingsKey = (slug) => (slug === 'college' ? 'main' : `seg:${slug}`);
 function defaultSettings(slug) {
   const key = settingsKey(slug);
   if (slug === 'college') {
-    return { key, emailSteps: genericSteps(5), linkedinSteps: [{ label: 'Connection Note', gapDays: 0 }], roles: ['Dean', 'Head', 'Manager', 'Vice'] };
+    return { key, emailSteps: genericSteps(5), linkedinSteps: collegeLinkedinSteps(), roles: ['Dean', 'Head', 'Manager', 'Vice'] };
   }
   if (slug === 'startup') {
     return { key, emailSteps: startup.emailSteps, linkedinSteps: startup.linkedinSteps, roles: ['Founder', 'CEO', 'CTO', 'COO', 'Head of HR'] };
@@ -96,6 +98,8 @@ async function ensureSegments() {
   for (const seg of DEFAULT_SEGMENTS) {
     if (!gone.has(seg.slug)) await Segment.updateOne({ slug: seg.slug }, { $setOnInsert: seg }, { upsert: true });
   }
+  // colleges now run LinkedIn follow-ups 1 and 2 too (was connection note only)
+  await Segment.updateOne({ slug: 'college', linkedinMax: { $lt: 3 } }, { $set: { linkedinMax: 3 } });
   await College.updateMany({ segment: { $exists: false } }, { $set: { segment: 'college' } });
 }
 
@@ -109,6 +113,15 @@ async function getSettings(slug = 'college') {
   let s = await Settings.findOne({ key: settingsKey(slug) });
   if (!s) s = await Settings.create(defaultSettings(slug));
   // LinkedIn step limit is per segment (college = connection note only)
+  if (slug === 'college' && max >= 3) {
+    const want = collegeLinkedinSteps();
+    let changed = false;
+    want.forEach((w, i) => {
+      if (!s.linkedinSteps[i]) { s.linkedinSteps.push(w); changed = true; }
+      else if (i > 0 && !s.linkedinSteps[i].draft) { s.linkedinSteps[i].draft = w.draft; changed = true; }
+    });
+    if (changed) await s.save();
+  }
   if (s.linkedinSteps.length > max) { s.linkedinSteps = s.linkedinSteps.slice(0, max); await s.save(); }
   return s;
 }
