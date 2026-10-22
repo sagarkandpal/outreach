@@ -96,6 +96,7 @@ async function refreshBadges() {
   const fb = document.getElementById('finishedCount');
   fb.textContent = finished.length;
   fb.classList.toggle('grey', !finished.length);
+  drawOwnerDash().catch(() => {});
   const unassigned = colleges.filter((c) => !c.owner).length;
   const ab = document.getElementById('assignCount');
   ab.textContent = unassigned;
@@ -142,18 +143,8 @@ async function renderToday() {
     }));
   };
 
-  // Arjun / Sagar tabs: count = tasks due for that person's colleges
-  const drawOwnerTabs = () => {
-    const n = (o) => items.filter((i) => (o === 'none' ? !i.owner : i.owner === o)).length;
-    const tabs = [['', 'Sab', items.length], ['arjun', 'Arjun', n('arjun')], ['sagar', 'Sagar', n('sagar')]];
-    if (n('none')) tabs.push(['none', 'Unassigned', n('none')]);
-    const box = document.getElementById('ownerTabs');
-    box.innerHTML = tabs.map(([k, l, c]) => `<button class="${todayOwner === k ? 'active' : ''}" data-owner="${k}">${l} <span class="badge ${todayOwner === k ? '' : 'grey'}">${c}</span></button>`).join('');
-    box.querySelectorAll('[data-owner]').forEach((b) => b.onclick = () => {
-      todayOwner = todayOwner === b.dataset.owner ? '' : b.dataset.owner; lsSet('todayOwner', todayOwner);
-      drawOwnerTabs(); draw(); drawDone(); updateStats();
-    });
-  };
+  // Arjun / Sagar tabs (no numbers: those live on the dashboard once a person is picked)
+  const drawOwnerTabs = () => drawOwnerButtons(items.some((i) => !i.owner));
 
   // college card 📋 button: build the prompt for one college
   const buildPrompt = async (college, senderName) => {
@@ -325,7 +316,48 @@ function layoutSide() {
   wrap.append(aside, main);
   view.appendChild(wrap);
 }
+// Arjun / Sagar buttons in the left side-bar; picking one opens that person's dashboard + work, clicking again goes back to the empty start
+function drawOwnerButtons(showNone) {
+  const tabs = [['', 'Sab'], ['arjun', 'Arjun'], ['sagar', 'Sagar']];
+  if (showNone) tabs.push(['none', 'Unassigned']);
+  const box = document.getElementById('ownerTabs');
+  box.innerHTML = tabs.map(([k, l]) => `<button class="${todayOwner === k ? 'active' : ''}" data-owner="${k}">${l}</button>`).join('');
+  box.querySelectorAll('[data-owner]').forEach((b) => b.onclick = () => {
+    todayOwner = todayOwner === b.dataset.owner ? '' : b.dataset.owner; lsSet('todayOwner', todayOwner);
+    guard(() => renderTodayTab(true));
+  });
+}
+
+// small per-person dashboard: today's total work with Email / LinkedIn breakdown (each person on their own, nothing combined)
+async function drawOwnerDash() {
+  const box = document.getElementById('ownerDash');
+  if (!box) return;
+  const sum = await api('GET', '/today/summary');
+  const me = sum[todayOwner] || { email: { left: 0, late: 0, sent: 0 }, linkedin: { left: 0, late: 0, sent: 0 } };
+  // Email / LinkedIn pills show only this person's remaining work
+  [['email', me.email.left], ['linkedin', me.linkedin.left]].forEach(([k, n]) => {
+    const badge = document.querySelector(`[data-sub="${k}"] .badge`);
+    if (badge) badge.textContent = n;
+  });
+  const all = { left: me.email.left + me.linkedin.left, sent: me.email.sent + me.linkedin.sent, late: me.email.late + me.linkedin.late };
+  const card = (label, icon, c) => `
+    <div class="dash-card">
+      <div class="dash-card-top"><span class="dash-ico">${ic(icon)}</span><span class="dash-label">${label}</span></div>
+      <div class="dash-num ${c.left ? '' : 'zero'}">${c.left}</div>
+      <div class="dash-foot"><span>${c.left ? 'baaki' : 'kuch baaki nahi'} · ${c.sent} aaj bheje</span>${c.late ? `<span class="late">${c.late} late</span>` : ''}</div>
+    </div>`;
+  box.innerHTML = `
+    <div class="dash-head"><h2>${esc(OWNERS[todayOwner] || 'Unassigned')} <span>ka aaj ka kaam</span></h2></div>
+    <div class="dash-grid">${card('Total baaki', 'check', all)}${card('Email', 'mail', me.email)}${card('LinkedIn', 'linkedin', me.linkedin)}</div>`;
+}
+
 async function renderTodayTab(reuse) {
+  if (!todayOwner) {
+    view.innerHTML = '<div class="owner-tabs" id="ownerTabs"></div><div class="card empty big"><div>Upar se Arjun ya Sagar chuno</div></div>';
+    drawOwnerButtons(false);
+    layoutSide();
+    return;
+  }
   if (todaySub === 'linkedin') {
     if (!(reuse && liData)) liData = await api('GET', '/linkedin/today');
     renderLinkedin(liData);
@@ -337,6 +369,9 @@ async function renderTodayTab(reuse) {
     drawSubTabs(await counts);
     layoutSide();
   }
+  const sub = document.getElementById('subTabs');
+  sub.insertAdjacentHTML('afterend', '<div class="card owner-dash" id="ownerDash"></div>');
+  await drawOwnerDash();
 }
 
 function renderLinkedin(data) {
@@ -376,13 +411,7 @@ function renderLinkedin(data) {
       ${oth.map((p) => pendRow(p, true)).join('')}`, pend.length)}
     ${section(3, 'Follow-up message bhejo', 'Sirf connected logo ke liye. Copy + Profile dabao, message paste karke bhejo, phir Bhej diya dabao.', f.length ? f.map(taskRow).join('') : '<div class="card-done">Koi follow-up pending nahi</div>', f.length)}`;
 
-  const all = notes.concat(followups);
-  const own = (o) => all.filter((i) => (o === 'none' ? !i.owner : i.owner === o)).length;
-  const tabs = [['', 'Sab', all.length], ['arjun', 'Arjun', own('arjun')], ['sagar', 'Sagar', own('sagar')]];
-  if (own('none')) tabs.push(['none', 'Unassigned', own('none')]);
-  const box = document.getElementById('ownerTabs');
-  box.innerHTML = tabs.map(([k, l, c]) => `<button class="${todayOwner === k ? 'active' : ''}" data-owner="${k}">${l} <span class="badge ${todayOwner === k ? '' : 'grey'}">${c}</span></button>`).join('');
-  box.querySelectorAll('[data-owner]').forEach((b) => b.onclick = () => { todayOwner = todayOwner === b.dataset.owner ? '' : b.dataset.owner; lsSet('todayOwner', todayOwner); guard(() => renderTodayTab(true)); });
+  drawOwnerButtons(notes.concat(followups).some((i) => !i.owner));
 
   view.querySelectorAll('[data-copyopen]').forEach((b) => b.onclick = () => guard(async () => {
     const t = (b.dataset.kind === 'notes' ? notes : followups).find((x) => x.contactId === b.dataset.copyopen);

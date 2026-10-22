@@ -316,7 +316,7 @@ router.delete('/contacts/:id/connected', wrap(async (req, res) => {
 }));
 
 // steps marked sent today (latest step per channel) so they can be undone from the Today tab
-router.get('/today/done', wrap(async (req, res) => {
+async function doneToday(req) {
   const settings = await getSettings(req.seg.slug);
   const colleges = await segColleges(req).lean();
   const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
@@ -334,6 +334,20 @@ router.get('/today/done', wrap(async (req, res) => {
     }
   }
   out.sort((a, b) => a.college.localeCompare(b.college));
+  return out;
+}
+router.get('/today/done', wrap(async (req, res) => res.json(await doneToday(req))));
+
+// per-person dashboard on the Today tab: what is left and what was already sent today, split by Email / LinkedIn
+router.get('/today/summary', wrap(async (req, res) => {
+  const [items, done] = await Promise.all([buildToday(req, await getSettings(req.seg.slug)), doneToday(req)]);
+  const out = {};
+  const slot = (o) => (out[o || 'none'] ||= {
+    email: { left: 0, late: 0, sent: 0 }, linkedin: { left: 0, late: 0, sent: 0 },
+  });
+  for (const i of items) { const x = slot(i.owner)[i.channel]; x.left++; if (i.state === 'overdue') x.late++; }
+  for (const d of done) slot(d.owner)[d.channel].sent++;
+  slot('arjun'); slot('sagar');
   res.json(out);
 }));
 
