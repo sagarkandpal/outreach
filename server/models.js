@@ -62,7 +62,7 @@ const contactSchema = new mongoose.Schema(
 
 const genericSteps = (n) => [{ label: 'Primary Email', gapDays: 0 }, ...Array.from({ length: n }, (_, i) => ({ label: `Follow-up ${i + 1}`, gapDays: 2 }))];
 
-const collegeLinkedinSteps = () => [{ label: 'Connection Note', gapDays: 0 }, ...startup.linkedinSteps.slice(1).map((st) => ({ label: st.label, gapDays: st.gapDays, draft: st.draft }))];
+const collegeLinkedinSteps = () => [{ label: 'Connection Note', gapDays: 0 }, ...startup.collegeLinkedinFollowUps.map((st) => ({ label: st.label, gapDays: st.gapDays, draft: st.draft }))];
 
 const DEFAULT_SEGMENTS = [
   { slug: 'college', name: 'Colleges', unit: 'College', unitPlural: 'Colleges', linkedinMax: 3, order: 0 },

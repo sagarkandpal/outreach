@@ -116,4 +116,22 @@ If you like what you see, I can walk you through how it would work for {company}
   },
 ];
 
-module.exports = { emailSteps, linkedinSteps };
+// colleges: Follow-up 1 = the college demo video, Follow-up 2 = the brochure (attached by hand)
+const collegeLinkedinFollowUps = [
+  {
+    label: 'Follow-up 1', gapDays: 2,
+    draft: `{first_name}, thanks for connecting. Rather than explain Botza, I'd like you to see it. It answers website visitors' questions from your college's own information, and there's an HR version for your staff too.
+
+Short video here: https://drive.google.com/file/d/1l3wG95_mcjCa4kSPCZKQEWn5ko8EoiSo/view?usp=sharing
+
+If it looks relevant for {college}, would you be open to a 15-minute demo this week?`,
+  },
+  {
+    label: 'Follow-up 2', gapDays: 2,
+    draft: `{first_name}, following up on the video. I've attached a short brochure that explains how Botza works for colleges: it answers student and parent questions on your website, and there's an HR version for staff too.
+
+If it looks relevant for {college}, would you be open to a quick 15-minute call?`,
+  },
+];
+
+module.exports = { emailSteps, linkedinSteps, collegeLinkedinFollowUps };
