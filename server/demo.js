@@ -5,6 +5,10 @@ const PLACEHOLDER = /\{demo[ _]?link\}|\[demo[ _]?link\]|\[Website Link With Bot
 const hasPlaceholder = (text) => new RegExp(PLACEHOLDER.source, 'i').test(String(text || ''));
 const fillDemoLink = (text, link) => String(text || '').replace(PLACEHOLDER, () => link);
 
+// startups show their own chatbot (the service falls back to the college one when these are left out)
+const STARTUP_WIDGET = { botzaWidgetScriptUrl: 'https://botza.panscience.xyz/widget/chatbot-widget.js', demoChatbotId: 'b8a67baf-a565-4af9-b3b2-fd1a42b6880c' };
+const widgetFor = (college) => (college.segment === 'startups' ? STARTUP_WIDGET : {});
+
 // "iitd.ac.in" -> "https://iitd.ac.in"; anything that is not a plain http(s) URL -> ''
 function normalizeWebsite(raw) {
   let s = String(raw || '').trim();
@@ -45,7 +49,7 @@ async function ensureDemoLink(college) {
       const r = await fetch(`${base}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: site }),
+        body: JSON.stringify({ url: site, ...widgetFor(college) }),
         signal: AbortSignal.timeout(60000), // hosted free tier can take ~50s to wake up
       });
       const body = await r.json().catch(() => ({}));
