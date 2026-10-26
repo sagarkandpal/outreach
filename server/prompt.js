@@ -68,7 +68,7 @@ ${drafts}
 ${rows}
 ` : '';
 
-  return { prompt, count: ready.length, skipped, missingDrafts };
+  return { prompt, count: ready.length, skipped, missingDrafts, readyIds: ready.map((t) => String(t.contactId)) };
 }
 
 module.exports = { buildEmailPrompt, firstName };

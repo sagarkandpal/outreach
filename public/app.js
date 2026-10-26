@@ -126,9 +126,10 @@ async function renderToday() {
     <div class="card master-bar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;margin-bottom:12px">
       <b>Master Prompt</b>
       <input id="masterSender" placeholder="Sender naam" value="${esc(savedSender())}" style="width:130px">
-      <button class="btn primary small" id="masterCopy">${ic('copy')}Master Prompt <span id="masterCount">${mine0.filter((i) => i.channel === 'email').length}</span> emails</button>
-      <button class="btn primary small" id="masterSent">${ic('check')}Master Sab Bhej diya <span id="masterSentCount">${mine0.length}</span></button>
+      <button class="btn primary small" id="masterCopy">${ic('copy')}Master Prompt <span id="masterCount" style="margin:0 4px">${mine0.filter((i) => i.channel === 'email').length}</span> emails</button>
+      <button class="btn primary small" id="masterSent">${ic('check')}Master Sab Bhej diya <span id="masterSentCount" style="margin-left:4px">${mine0.length}</span></button>
       <small class="muted" id="masterHint"></small>
+      <div id="masterSkipped" style="flex-basis:100%;font-size:13px;color:#b45309"></div>
     </div>
     <div class="help"><b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Email ka agla follow-up apne aap 2 din baad yahin aa jayega. Card me <b>✓ Sab Bhej diya</b> dabake us ${esc(seg.unit.toLowerCase())} ke saare tasks ek saath mark karo. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis ${esc(seg.unit.toLowerCase())} ka hai.</div>
     <div id="todayCards"></div>
@@ -305,15 +306,26 @@ async function renderToday() {
     if (r.demoFailed && r.demoFailed.length) toast(`${r.demoFailed.join(', ')}: is site par Botza demo nahi lag sakta`);
     if (!r.count) return toast(r.skipped[0] || 'Koi email ready nahi');
     await navigator.clipboard.writeText(r.prompt);
-    toast(`Master prompt (${stepLabelOf()}): ${r.count} emails copy ho gaye ✓${r.skipped.length ? ` · ${r.skipped.length} skip` : ''}`);
+    toast(`Master prompt (${stepLabelOf()}): ${r.count} emails copy ho gaye ✓${r.skipped.length ? ` · ${r.skipped.length} skip (wajah neeche bar me)` : ''}`);
+    const note = document.getElementById('masterSkipped');
+    note.innerHTML = r.skipped.length ? `<b>${r.skipped.length} skip hue:</b><ul>${r.skipped.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : '';
   });
   // master "Sab Bhej diya": every task currently visible (owner tab + Follow-up filter), across all cards
   document.getElementById('masterSent').onclick = () => guard(async () => {
-    const tasks = items.filter((i) => ownerMatch(i) && stepMatch(i));
-    if (!tasks.length) return toast('Koi task pending nahi');
-    if (!confirm(`${tasks.length} tasks (${stepLabelOf()}, ${new Set(tasks.map((t) => t.college)).size} ${seg.unitPlural.toLowerCase()}) "Bhej diya" mark karun?`)) return;
+    const visible = items.filter((i) => ownerMatch(i) && stepMatch(i));
+    if (!visible.length) return toast('Koi task pending nahi');
     const btn = document.getElementById('masterSent');
     btn.disabled = true;
+    // emails the Master Prompt skipped (missing email/draft/demo link...) never went out, so they stay pending
+    let tasks = visible;
+    try {
+      const r = await buildPrompt('', document.getElementById('masterSender').value.trim());
+      const ready = new Set(r.readyIds || []);
+      tasks = visible.filter((t) => t.channel !== 'email' || ready.has(String(t.contactId)));
+    } catch (e) { btn.disabled = false; throw e; }
+    const kept = visible.length - tasks.length;
+    if (!tasks.length) { btn.disabled = false; return toast('Sab skip hue the, kuch mark karne layak nahi'); }
+    if (!confirm(`${tasks.length} tasks (${stepLabelOf()}, ${new Set(tasks.map((t) => t.college)).size} ${seg.unitPlural.toLowerCase()}) "Bhej diya" mark karun?${kept ? `\n\n${kept} skip wale (jo prompt me nahi gaye) pending hi rahenge.` : ''}`)) { btn.disabled = false; return; }
     const ok = [];
     try {
       for (let n = 0; n < tasks.length; n += 5) {
