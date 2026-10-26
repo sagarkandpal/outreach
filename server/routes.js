@@ -364,8 +364,12 @@ router.get('/today/summary', wrap(async (req, res) => {
 // prompt for Claude Desktop (Gmail) covering the emails due today (optionally for one college)
 router.post('/prompt/emails', wrap(async (req, res) => {
   const settings = await getSettings(req.seg.slug);
-  const { senderName, college } = req.body || {};
-  const items = (await buildToday(req, settings)).filter((i) => !college || i.college === college);
+  const { senderName, college, step, owner } = req.body || {};
+  // owner: '' / undefined = everyone, 'none' = unassigned, else that owner (master prompt follows the owner tabs)
+  const ownerOk = (i) => !owner || (owner === 'none' ? !i.owner : i.owner === owner);
+  // step: '' / undefined = Sab, else only that step (0 = Primary, 1 = Follow-up 1, ...), same as the Follow-up dropdown
+  const stepFilter = step === undefined || step === null || step === '' ? null : Number(step);
+  const items = (await buildToday(req, settings)).filter((i) => (!college || i.college === college) && ownerOk(i) && (stepFilter === null || i.stepIndex === stepFilter));
   // demo links for recipients whose step draft uses the placeholder (generated once per organisation, then cached)
   const demoLinks = {}, demoErrors = {}, demoFailed = new Set();
   for (const t of items) {

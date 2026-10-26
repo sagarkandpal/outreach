@@ -123,6 +123,13 @@ async function renderToday() {
       </div>
       <select id="fChannel" hidden><option value=""></option></select>
     </div>
+    <div class="card master-bar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;margin-bottom:12px">
+      <b>Master Prompt</b>
+      <input id="masterSender" placeholder="Sender naam" value="${esc(savedSender())}" style="width:130px">
+      <button class="btn primary small" id="masterCopy">${ic('copy')}Master Prompt <span id="masterCount">${mine0.filter((i) => i.channel === 'email').length}</span> emails</button>
+      <button class="btn primary small" id="masterSent">${ic('check')}Master Sab Bhej diya <span id="masterSentCount">${mine0.length}</span></button>
+      <small class="muted" id="masterHint"></small>
+    </div>
     <div class="help"><b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Email ka agla follow-up apne aap 2 din baad yahin aa jayega. Card me <b>✓ Sab Bhej diya</b> dabake us ${esc(seg.unit.toLowerCase())} ke saare tasks ek saath mark karo. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis ${esc(seg.unit.toLowerCase())} ka hai.</div>
     <div id="todayCards"></div>
     <div id="todayDone"></div>`;
@@ -149,7 +156,7 @@ async function renderToday() {
   // college card 📋 button: build the prompt for one college
   const buildPrompt = async (college, senderName) => {
     try { localStorage.setItem('senderName', senderName); } catch {}
-    return api('POST', '/prompt/emails', { senderName, college });
+    return api('POST', '/prompt/emails', { senderName, college, step: todayStep, owner: todayOwner });
   };
 
   const updateStats = () => {
@@ -159,7 +166,11 @@ async function renderToday() {
     document.getElementById('stLate').textContent = late;
     document.getElementById('stLateBox').classList.toggle('bad', late > 0);
     document.getElementById('stColleges').textContent = new Set(mine.map((i) => i.college)).size;
+    document.getElementById('masterCount').textContent = mine.filter((i) => i.channel === 'email').length;
+    document.getElementById('masterSentCount').textContent = mine.length;
+    document.getElementById('masterHint').textContent = `${stepLabelOf()} · ${OWNERS[todayOwner] || (todayOwner === 'none' ? 'Unassigned' : 'Sab')} ke saare ${seg.unitPlural.toLowerCase()}`;
   };
+  const stepLabelOf = () => (todayStep === '' ? 'Sab steps' : todayStep === '0' ? 'Pehla message' : 'Follow-up ' + todayStep);
 
   // Update the page in place after "sent": no re-render, so cards never jump or re-flow.
   const afterSent = (sent) => {
@@ -261,7 +272,8 @@ async function renderToday() {
       if (r.demoFailed && r.demoFailed.length) { toast(`${r.demoFailed.join(', ')}: is site par Botza demo nahi lag sakta`); render(); }
       if (!r.count) return toast(r.skipped[0] || `Is ${seg.unit.toLowerCase()} ka koi email ready nahi`);
       await navigator.clipboard.writeText(r.prompt);
-      toast(`${college.replace('[DEMO] ', '')}: ${r.count} emails ka prompt copy ho gaya ✓`);
+      const stepName = todayStep === '' ? '' : ` (${todayStep === '0' ? 'Pehla message' : 'Follow-up ' + todayStep})`;
+      toast(`${college.replace('[DEMO] ', '')}: ${r.count} emails${stepName} ka prompt copy ho gaya ✓`);
     }));
     box.querySelectorAll('[data-msg]').forEach((b) => b.onclick = () => guard(async () => {
       const t = items.find((x) => x.contactId === b.dataset.msg && x.channel === 'linkedin');
@@ -286,6 +298,33 @@ async function renderToday() {
   stepSel.innerHTML = '<option value="">Sab</option>' + stepNums.map((n) => `<option value="${n}">${n === 0 ? 'Pehla message' : 'Follow-up ' + n}</option>`).join('');
   stepSel.value = todayStep;
   stepSel.onchange = () => { todayStep = stepSel.value; draw(); updateStats(); };
+  document.getElementById('masterCopy').onclick = () => guard(async () => {
+    const senderName = document.getElementById('masterSender').value.trim();
+    if (!senderName) return toast('Pehle sender naam likho');
+    const r = await buildPrompt('', senderName);
+    if (r.demoFailed && r.demoFailed.length) toast(`${r.demoFailed.join(', ')}: is site par Botza demo nahi lag sakta`);
+    if (!r.count) return toast(r.skipped[0] || 'Koi email ready nahi');
+    await navigator.clipboard.writeText(r.prompt);
+    toast(`Master prompt (${stepLabelOf()}): ${r.count} emails copy ho gaye ✓${r.skipped.length ? ` · ${r.skipped.length} skip` : ''}`);
+  });
+  // master "Sab Bhej diya": every task currently visible (owner tab + Follow-up filter), across all cards
+  document.getElementById('masterSent').onclick = () => guard(async () => {
+    const tasks = items.filter((i) => ownerMatch(i) && stepMatch(i));
+    if (!tasks.length) return toast('Koi task pending nahi');
+    if (!confirm(`${tasks.length} tasks (${stepLabelOf()}, ${new Set(tasks.map((t) => t.college)).size} ${seg.unitPlural.toLowerCase()}) "Bhej diya" mark karun?`)) return;
+    const btn = document.getElementById('masterSent');
+    btn.disabled = true;
+    const ok = [];
+    try {
+      for (let n = 0; n < tasks.length; n += 5) {
+        const batch = tasks.slice(n, n + 5);
+        const res = await Promise.allSettled(batch.map((t) => api('POST', `/contacts/${t.contactId}/sent`, { channel: t.channel })));
+        res.forEach((r, k) => { if (r.status === 'fulfilled') ok.push(batch[k]); });
+      }
+    } finally { btn.disabled = false; if (ok.length) afterSent(ok); }
+    toast(ok.length === tasks.length ? `${ok.length} tasks done ✓` : `${ok.length}/${tasks.length} done, baaki fail hue`);
+  });
+  updateStats();
   drawOwnerTabs();
   draw();
   drawDone();
