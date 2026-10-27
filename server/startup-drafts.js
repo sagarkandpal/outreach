@@ -128,7 +128,7 @@ Try a typical question about pricing or product fit and see how the demo respond
   },
 ];
 
-// colleges. {college} = the college name, {college_website} = the website saved on the college card.
+// colleges. {college} = the college name (drafts say "{college}'s website"; {college_website} also works).
 // Steps with an `attachment` are attached by hand to the Gmail draft (only college Follow-up 5 now); other files are Drive links inside the draft. Follow-up 3 uses the per-college {demo_link}.
 const collegeEmailSteps = [
   {
@@ -137,7 +137,7 @@ const collegeEmailSteps = [
 
 Hi {first_name},
 
-I was looking at {college}'s website ({college_website}) and wanted to share an idea relevant to the student enquiry experience.
+I was looking at {college}'s website and wanted to share an idea relevant to the student enquiry experience.
 
 Prospective students often need specific information about fees, courses, eligibility or admissions. When they cannot find an answer quickly, they may need to call the college or wait for someone to respond.
 
@@ -179,7 +179,7 @@ Hi {first_name},
 
 Here's a practical example of what the experience could look like.
 
-A prospective student visits {college_website} and asks, "What are the eligibility criteria for BTech CSE?"
+A prospective student visits {college}'s website and asks, "What are the eligibility criteria for BTech CSE?"
 
 Instead of searching across multiple pages, the student can ask the assistant and receive an answer based on the information configured for it. They can then ask a related question about admissions or hostel facilities.
 
@@ -201,7 +201,7 @@ Hi {first_name},
 
 Rather than asking you to imagine how Botza might work, I'd like to show you a practical example.
 
-We've prepared a small demonstration using publicly available information from {college_website} to illustrate how an assistant could respond to questions about courses, fees and other student-related information.
+We've prepared a small demonstration using publicly available information from {college}'s website to illustrate how an assistant could respond to questions about courses, fees and other student-related information.
 
 Try the demo: {demo_link}
 
@@ -278,7 +278,7 @@ Would you be open to a quick look at how this could work for {college}?`,
 
 Botza can help answer routine queries and, through available analytics, show your team what visitors are asking.
 
-If useful, I can share a small demo based on publicly available information from {college_website}. Would that be relevant to your team?`,
+If useful, I can share a small demo based on publicly available information from {college}'s website. Would that be relevant to your team?`,
   },
 ];
 
