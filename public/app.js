@@ -332,7 +332,8 @@ async function renderToday() {
   const gmailBar = document.getElementById('gmailBar');
   const drawGmail = async () => {
     let g;
-    try { g = await api('GET', '/gmail/status'); } catch { gmailBar.innerHTML = ''; return; }
+    try { g = await api('GET', '/gmail/status'); } catch { gmailBar.innerHTML = '<b>Gmail Drafts</b> <span class="muted">server me ye feature nahi hai: <code>git checkout gmail-drafts</code> (ya pull) karke server restart karo.</span>'; return; }
+    if (!g.configured) { gmailBar.innerHTML = '<b>Gmail Drafts</b> <span style="color:#b45309">Is computer ki <code>.env</code> me <code>GOOGLE_CLIENT_ID</code> aur <code>GOOGLE_CLIENT_SECRET</code> nahi hain, isliye connect button band hai. Sagar se dono lines lekar <code>.env</code> me daalo aur server restart karo.</span>'; return; }
     const emailCount = items.filter((i) => ownerMatch(i) && stepMatch(i) && i.channel === 'email').length;
     gmailBar.innerHTML = `<b>Gmail Drafts</b>
       ${Object.keys(OWNERS).map((o) => g.accounts[o]
