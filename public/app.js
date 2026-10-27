@@ -933,12 +933,12 @@ async function renderSettings() {
         ${importNote ? `<p>${importNote}</p>` : ''}
       </div>
       <h3>✍️ Email drafts</h3>
-      <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{company}</code> (= ${esc(seg.unit.toLowerCase())} ka naam; <code>{college}</code> bhi chalta hai), <code>{sender_name}</code> (Aaj ka kaam me college card ke "Sender naam" box se aata hai — Email prompt aur LinkedIn 📋 dono me). College card ka "📋 Prompt" isi draft ko Claude ko dega.</p>
+      <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{company}</code> (= ${esc(seg.unit.toLowerCase())} ka naam; <code>{college}</code> bhi chalta hai), <code>{college_website}</code> (card pe bhari website), <code>{sender_name}</code> (Aaj ka kaam me college card ke "Sender naam" box se aata hai — Email prompt aur LinkedIn 📋 dono me). College card ka "📋 Prompt" isi draft ko Claude ko dega.</p>
       ${drafts.email.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.email : 'Follow-up ' + i}</b>
         ${attachBoxes('email', i)}
         <textarea data-draft="email:${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea>${signaturePreview()}</div>`).join('')}
       <h3>💼 LinkedIn drafts</h3>
-      <p class="muted">Har step ka message yahan paste karo. Placeholders: <code>{first_name}</code>, <code>{company}</code> (= ${esc(seg.unit.toLowerCase())} ka naam; <code>{college}</code> bhi chalta hai), <code>{sender_name}</code>. Aaj ka kaam me LinkedIn task par 📋 dabane se ye copy hoga.</p>
+      <p class="muted">Har step ka message yahan paste karo. Placeholders: <code>{first_name}</code>, <code>{company}</code> (= ${esc(seg.unit.toLowerCase())} ka naam; <code>{college}</code> bhi chalta hai), <code>{college_website}</code>, <code>{sender_name}</code>. Aaj ka kaam me LinkedIn task par 📋 dabane se ye copy hoga.</p>
       ${drafts.linkedin.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.linkedin : 'Follow-up ' + i}</b>
         ${attachBoxes('linkedin', i)}
         <textarea data-draft="linkedin:${i}" placeholder="Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}

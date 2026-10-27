@@ -29,6 +29,7 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
     else if (!draft) skipped.push(`${t.college} / ${t.name || t.role}: "${t.stepLabel}" ka draft Settings mein nahi hai`);
     else if (hasPlaceholder(draft) && !t.demoLink) skipped.push(`${t.college} / ${t.name || t.role}: demo link nahi ban paya (${t.demoError || 'website nahi hai'})`);
     else if (/\{attachment_link\}/i.test(draft) && !String(steps[t.stepIndex].attachmentUrl || '').trim()) skipped.push(`${t.college} / ${t.name || t.role}: "${t.stepLabel}" ka attachment link Settings mein nahi hai`);
+    else if (/\{college_website\}/i.test(draft) && !t.website) skipped.push(`${t.college} / ${t.name || t.role}: website nahi hai, draft mein {college_website} hai`);
     else if (/\{first_name\}/.test(draft) && !firstName(t.name)) skipped.push(`${t.college} / ${t.role}: contact ka naam nahi hai, draft mein {first_name} hai`);
     else ready.push(t);
   }
@@ -47,9 +48,11 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
   const signed = (text, o) => {
     if (!o) return text;
     const sig = `Best regards,\n${SIGNATURES[o].name}\n${TITLE_LINE}\n[LinkedIn](${SIGNATURES[o].linkedin})`;
-    const closing = /\n+(?:best regards|best|thanks|thank you|regards|warm regards|kind regards|cheers|sincerely),?[ \t]*\n+[ \t]*\{sender_name\}[ \t]*$/i;
+    // a trailing company line ("PanScience Innovations | Botza AI") belongs to the closing the sign-off replaces
+    const company = '(?:\\n[ \\t]*PanScience Innovations \\| Botza AI)?';
+    const closing = new RegExp(`\\n+(?:best regards|best|thanks|thank you|regards|warm regards|kind regards|cheers|sincerely),?[ \\t]*\\n+[ \\t]*\\{sender_name\\}[ \\t]*${company}[ \\t]*$`, 'i');
     if (closing.test(text)) return text.replace(closing, () => `\n\n${sig}`);
-    return text.replace(/\n*\{sender_name\}[ \t]*$/, () => `\n\n${sig}`);
+    return text.replace(new RegExp(`\\n*\\{sender_name\\}[ \\t]*${company}[ \\t]*$`), () => `\n\n${sig}`);
   };
   const blocks = [];
   for (const t of ready) if (!blocks.some((b) => b.i === t.stepIndex && b.o === signerOf(t))) blocks.push({ i: t.stepIndex, o: signerOf(t) });
@@ -57,8 +60,10 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
   const drafts = blocks.map(({ i, o }) => `### ${steps[i].label}${signers.length ? `  [Signer: ${o || '-'}]` : ''}  [Mode: ${modeOf(i)}]\n<<<DRAFT\n${signed(steps[i].draft.trim(), o).replace(/\{sender_name\}/g, () => sender).replace(/\{attachment_link\}/gi, () => `[${linkText(i)}](${urlOf(i)})`)}\nDRAFT>>>`).join('\n\n');
   // per-recipient demo link, only for steps whose draft uses {demo_link}
   const anyDemo = ready.some((t) => hasPlaceholder(steps[t.stepIndex].draft));
+  // per-recipient website, only for steps whose draft uses {college_website}
+  const anyWeb = ready.some((t) => /\{college_website\}/i.test(steps[t.stepIndex].draft));
   const cell = (s) => String(s).replace(/\s*[|\r\n]+\s*/g, ' ');
-  const rows = ready.map((t, n) => `${n + 1} | ${cell(t.college.replace('[DEMO] ', ''))} | ${cell(firstName(t.name))} | ${t.email} | ${t.stepLabel} | ${modeOf(t.stepIndex)}${signers.length ? ` | ${signerOf(t) || '-'}` : ''}${anyDemo ? ` | ${t.demoLink || '-'}` : ''}`).join('\n');
+  const rows = ready.map((t, n) => `${n + 1} | ${cell(t.college.replace('[DEMO] ', ''))} | ${cell(firstName(t.name))} | ${t.email} | ${t.stepLabel} | ${modeOf(t.stepIndex)}${signers.length ? ` | ${signerOf(t) || '-'}` : ''}${anyDemo ? ` | ${t.demoLink || '-'}` : ''}${anyWeb ? ` | ${t.website || '-'}` : ''}`).join('\n');
   const sigRule = signers.length ? '\n- Drafts mein sign-off pehle se laga hua hai (owner ke hisaab se). Har recipient ke liye wo Draft block lo jiska Step aur Signer uski Recipients row se match kare; "[LinkedIn](url)" clickable hyperlink bane (text sirf "LinkedIn"). Sign-off mat badalna.' : '';
   const senderRule = sender && !signers.length ? `\n- Draft mein sender (mera) naam "${sender}" hi rehna chahiye; use badalna mat.` : '';
   const draftRules = `
@@ -70,7 +75,7 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
 Rules:
 - Har recipient ko sirf uske Step ka draft banao (Primary ya Follow-up N). Kisi aur step ka draft mat banana.${draftRules}
 - Draft ke andar {first_name} ki jagah recipient ka First name, aur {college} / {company} ki jagah ${unit} ka naam daalo. Baaki draft ka text bilkul same rakho, kuch add/edit mat karo.${senderRule}${sigRule}
-${anyDemo ? '- Draft mein {demo_link} / [demo link] (ya [Website Link With Botza]) ki jagah us recipient ki "Demo link" daalo (Recipients list me di hui, hu-ba-hu, badalna mat). Link clickable rakho.\n' : ''}- Draft ki pehli line "Subject:" se shuru ho to wo email ka subject hai, baaki body hai.
+${anyWeb ? '- Draft mein {college_website} ki jagah us recipient ki "Website" daalo (Recipients list me di hui, hu-ba-hu).\n' : ''}${anyDemo ? '- Draft mein {demo_link} / [demo link] (ya [Website Link With Botza]) ki jagah us recipient ki "Demo link" daalo (Recipients list me di hui, hu-ba-hu, badalna mat). Link clickable rakho.\n' : ''}- Draft ki pehli line "Subject:" se shuru ho to wo email ka subject hai, baaki body hai.
 - Draft mein jahan [text](url) jaisa markdown link ho, use email mein clickable hyperlink bana ke draft mein daalo: email ki HTML body use karo (har paragraph <p> mein, link <a href="url">text</a>), plain text body mein markdown kabhi mat bhejo. Link ka sirf text (jaise "Demo video link") dikhna chahiye, raw URL ya "[text](url)" ke brackets email mein dikhne nahi chahiye, aur href mein URL hu-ba-hu wahi ho jo draft mein hai. Agar connector HTML body support nahi karta to us email ka draft mat banao, bas table mein "Failed: HTML body unsupported" likho.
 - Har email ka alag draft banao (koi CC/BCC ya group mail nahi).
 - Ambiguous kuch ho to guess mat karo; uska draft mat banao aur table mein "Failed" likho.
@@ -82,7 +87,7 @@ Saare drafts ke baad, aakhri message mein sirf ek readable markdown table do, Re
 ## Drafts
 ${drafts}
 
-## Recipients (# | ${unit} | First name | Email | Step | Mode${signers.length ? ' | Signer' : ''}${anyDemo ? ' | Demo link' : ''})
+## Recipients (# | ${unit} | First name | Email | Step | Mode${signers.length ? ' | Signer' : ''}${anyDemo ? ' | Demo link' : ''}${anyWeb ? ' | Website' : ''})
 ${rows}
 ` : '';
 

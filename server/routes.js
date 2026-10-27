@@ -233,6 +233,7 @@ async function buildToday(req, settings, onlyChannel, now = new Date(), pre) {
   const cname = Object.fromEntries(colleges.map((c) => [String(c._id), c.name]));
   const cowner = Object.fromEntries(colleges.map((c) => [String(c._id), c.owner || '']));
   const cdemo = Object.fromEntries(colleges.map((c) => [String(c._id), c.demoUrl || '']));
+  const cweb = Object.fromEntries(colleges.map((c) => [String(c._id), c.website || '']));
   const cdemoFail = Object.fromEntries(colleges.filter((c) => c.demoStatus === 'failed').map((c) => [String(c._id), c.demoError || 'is site par demo nahi lag sakta']));
   const items = [];
   for (const raw of contacts) {
@@ -250,13 +251,14 @@ async function buildToday(req, settings, onlyChannel, now = new Date(), pre) {
         ? String(steps[i].draft || '').trim()
             .replace(/\{first_name\}/g, firstName(c.name))
             .replace(/\{(?:college|company)\}/g, () => college.replace('[DEMO] ', ''))
+            .replace(/\{college_website\}/gi, (m) => cweb[String(c.collegeId)] || m)
             .replace(/\{attachment_link\}/gi, (m) => String(steps[i].attachmentUrl || '').trim() || m)
         : '';
       // demo link is only filled from the cache here; the app asks /colleges/:id/demo when it is still missing
       const demoLink = cdemo[String(c.collegeId)];
       const needsDemo = channel === 'linkedin' && hasPlaceholder(message);
       items.push({
-        contactId: c._id, collegeId: c.collegeId, college, owner: cowner[String(c.collegeId)] || '', role: c.role, name: c.name,
+        contactId: c._id, collegeId: c.collegeId, college, website: cweb[String(c.collegeId)] || '', owner: cowner[String(c.collegeId)] || '', role: c.role, name: c.name,
         email: c.email, linkedinUrl: c.linkedinUrl, channel, stepIndex: i, stepLabel: steps[i].label,
         state: cells[i].state, daysLate: cells[i].days || 0, isFirst: i === 0,
         message: needsDemo && demoLink ? fillDemoLink(message, demoLink) : message, demoPending: needsDemo && !demoLink, demoFailed: cdemoFail[String(c.collegeId)] || '',

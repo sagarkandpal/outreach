@@ -64,7 +64,7 @@ const contactSchema = new mongoose.Schema(
 
 const genericSteps = (n) => [{ label: 'Primary Email', gapDays: 0 }, ...Array.from({ length: n }, (_, i) => ({ label: `Follow-up ${i + 1}`, gapDays: 2 }))];
 
-const collegeLinkedinSteps = () => [{ label: 'Connection Note', gapDays: 0 }, ...startup.collegeLinkedinFollowUps.map((st) => ({ label: st.label, gapDays: st.gapDays, draft: st.draft }))];
+const collegeLinkedinSteps = () => startup.collegeLinkedinSteps.map((st) => ({ label: st.label, gapDays: st.gapDays, draft: st.draft }));
 
 const DEFAULT_SEGMENTS = [
   { slug: 'college', name: 'Colleges', unit: 'College', unitPlural: 'Colleges', linkedinMax: 3, order: 0 },
@@ -77,7 +77,7 @@ const settingsKey = (slug) => (slug === 'college' ? 'main' : `seg:${slug}`);
 function defaultSettings(slug) {
   const key = settingsKey(slug);
   if (slug === 'college') {
-    return { key, emailSteps: genericSteps(5), linkedinSteps: collegeLinkedinSteps(), roles: ['Dean', 'Head', 'Manager', 'Vice'] };
+    return { key, emailSteps: startup.collegeEmailSteps, linkedinSteps: collegeLinkedinSteps(), roles: ['Dean', 'Head', 'Manager', 'Vice'] };
   }
   if (slug === 'startup') {
     return { key, emailSteps: startup.emailSteps, linkedinSteps: startup.linkedinSteps, roles: ['Founder', 'CEO', 'CTO', 'COO', 'Head of HR'] };
