@@ -49,7 +49,11 @@ async function accessToken(owner) {
 const escHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const inline = (s) => escHtml(s)
   .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, t, u) => `<a href="${u}">${t}</a>`)
-  .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (m, pre, u) => `${pre}<a href="${u}">${u}</a>`);
+  .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (m, pre, u) => {
+    const tail = (u.match(/[.,;:!?]+$/) || [''])[0]; // sentence punctuation is not part of the link
+    const url = u.slice(0, u.length - tail.length);
+    return `${pre}<a href="${url}">${url}</a>${tail}`;
+  });
 
 // plain-text draft (with [text](url) links) -> HTML: blank line = paragraph, "- " lines = list
 function toHtml(body) {
