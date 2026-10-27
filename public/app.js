@@ -6,6 +6,12 @@ let todayStep = ''; // Today tab step filter ('' = all, '0' = first touch, '1' =
 let todayFilter = ''; // Today tab channel filter, kept across re-renders
 const BUILT_IN = ['college']; // the Colleges segment cannot be deleted
 const OWNERS = { arjun: 'Arjun', sagar: 'Sagar' };
+// email sign-off per owner (same text as SIGNATURES in server/prompt.js)
+const SIGNATURES = {
+  sagar: { name: 'Sagar Kandpal', linkedin: 'https://www.linkedin.com/in/sagar-kandpal/' },
+  arjun: { name: 'Arjun Purwar', linkedin: 'https://www.linkedin.com/in/arjun-purwar/' },
+};
+const signaturePreview = () => `<div class="muted" style="display:flex;gap:32px;flex-wrap:wrap;margin-top:6px;font-size:13px">${Object.entries(SIGNATURES).map(([o, g]) => `<div><b>${esc(OWNERS[o])} ke college/company ka sign-off</b> (prompt me closing + {sender_name} ki jagah auto lagta hai)<br>Best regards,<br>${esc(g.name)}<br>Entrepreneur in Residence - Panscience Innovations<br><a href="${esc(g.linkedin)}" target="_blank" rel="noopener">LinkedIn</a></div>`).join('')}</div>`;
 const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 let todayOwner = lsGet('todayOwner'); // Today tab owner filter ('' = all, 'arjun', 'sagar', 'none')
@@ -930,7 +936,7 @@ async function renderSettings() {
       <p class="muted">Har step ka ready draft yahan paste karo (pehli line <code>Subject: ...</code> ho sakti hai). Placeholders: <code>{first_name}</code>, <code>{company}</code> (= ${esc(seg.unit.toLowerCase())} ka naam; <code>{college}</code> bhi chalta hai), <code>{sender_name}</code> (Aaj ka kaam me college card ke "Sender naam" box se aata hai — Email prompt aur LinkedIn 📋 dono me). College card ka "📋 Prompt" isi draft ko Claude ko dega.</p>
       ${drafts.email.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.email : 'Follow-up ' + i}</b>
         ${attachBoxes('email', i)}
-        <textarea data-draft="email:${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
+        <textarea data-draft="email:${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea>${signaturePreview()}</div>`).join('')}
       <h3>💼 LinkedIn drafts</h3>
       <p class="muted">Har step ka message yahan paste karo. Placeholders: <code>{first_name}</code>, <code>{company}</code> (= ${esc(seg.unit.toLowerCase())} ka naam; <code>{college}</code> bhi chalta hai), <code>{sender_name}</code>. Aaj ka kaam me LinkedIn task par 📋 dabane se ye copy hoga.</p>
       ${drafts.linkedin.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.linkedin : 'Follow-up ' + i}</b>
