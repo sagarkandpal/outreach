@@ -17,7 +17,7 @@ Best,
 {sender_name}`,
   },
   {
-    label: 'Follow-up 1', gapDays: 2, attachment: 'Brochure',
+    label: 'Follow-up 1', gapDays: 2, attachment: '',
     draft: `Subject: Handling repeat website questions
 
 Hi {first_name},
@@ -26,7 +26,7 @@ When visitors repeatedly ask about pricing, product fit, or setup, your team may
 
 Botza lets visitors ask questions in their own words and receive answers based on the knowledge base you provide.
 
-I've attached a short brochure explaining how it works.
+I've attached a short [brochure](https://drive.google.com/file/d/1U2SRhuq4M7C0a-Lw1iRkrUddFqKkwoWA/view?usp=sharing) explaining how it works.
 
 Would it be useful to see how Botza handles a typical website question?
 
@@ -68,7 +68,7 @@ Best,
 {sender_name}`,
   },
   {
-    label: 'Follow-up 4', gapDays: 2, attachment: 'Feature comparison sheet',
+    label: 'Follow-up 4', gapDays: 2, attachment: '',
     draft: `Subject: Comparing FAQ pages and chatbots
 
 Hi {first_name},
@@ -77,7 +77,7 @@ An FAQ page works well when visitors know where to look. But when they're unsure
 
 Botza offers another route: visitors ask questions in their own words and receive answers based on the documents you provide.
 
-I've attached the feature comparison sheet so you can assess whether a chatbot could complement your existing website information.
+I've attached the [feature comparison sheet](https://drive.google.com/file/d/1Mf_UgqmH6CCQcR2hX6DQ7m_5HTbL0S6p/view?usp=sharing) so you can assess whether a chatbot could complement your existing website information.
 
 Would a quick comparison be useful?
 
@@ -129,7 +129,7 @@ Try a typical question about pricing or product fit and see how the demo respond
 ];
 
 // colleges. {college} = the college name, {college_website} = the website saved on the college card.
-// Steps with an `attachment` are attached by hand to the Gmail draft; Follow-up 3 uses the per-college {demo_link}.
+// Steps with an `attachment` are attached by hand to the Gmail draft (only college Follow-up 5 now); other files are Drive links inside the draft. Follow-up 3 uses the per-college {demo_link}.
 const collegeEmailSteps = [
   {
     label: 'Primary Email', gapDays: 0, attachment: '',
@@ -150,7 +150,7 @@ Best regards,
 PanScience Innovations | Botza AI`,
   },
   {
-    label: 'Follow-up 1', gapDays: 2, attachment: 'Brochure',
+    label: 'Follow-up 1', gapDays: 2, attachment: '',
     draft: `Subject: How an AI assistant could support {college}
 
 Hi {first_name},
@@ -163,7 +163,7 @@ For prospective students, that can mean finding information about courses, fees 
 
 The assistant's responses depend on the information and configuration provided, and supported content can be updated as details change.
 
-I've attached a short overview of the platform for context.
+I've attached a [short overview of the platform](https://drive.google.com/file/d/1PMXWurspMRehUGZLoPF8zaWzWRLW_7e7/view?usp=sharing) for context.
 
 Would a brief walkthrough focused on the student-facing use case be worth exploring for {college}?
 
@@ -214,7 +214,7 @@ Best regards,
 PanScience Innovations | Botza AI`,
   },
   {
-    label: 'Follow-up 4', gapDays: 2, attachment: 'Feature comparison sheet',
+    label: 'Follow-up 4', gapDays: 2, attachment: '',
     draft: `Subject: Another possible use for AI at {college}: internal staff queries
 
 Hi {first_name},
@@ -227,7 +227,7 @@ A separate Botza assistant can help employees retrieve answers from the HR polic
 
 This could be considered independently of the student-facing assistant, depending on your institution's priorities.
 
-Would it be useful to compare the two use cases and identify which, if either, deserves attention first?
+Would it be useful to [compare the two use cases](https://drive.google.com/file/d/1i31RPS4_vzd6tU0NJTRrA4eBtien7joE/view?usp=sharing) and identify which, if either, deserves attention first?
 
 Best regards,
 {sender_name}
