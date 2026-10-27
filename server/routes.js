@@ -1,7 +1,8 @@
 const express = require('express');
 const { College, Contact, Segment, History, Settings, Removed, settingsKey, PROTECTED_SEGMENTS, DEFAULT_SEGMENT_SLUGS, getSettings, getSegment } = require('./models');
 const { decorate } = require('./due');
-const { buildEmailPrompt, firstName } = require('./prompt');
+const { buildEmailPrompt, classifyEmailItems, firstName } = require('./prompt');
+const gmail = require('./gmail');
 const { splitNoDemo, hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink } = require('./demo');
 
 const router = express.Router();
@@ -366,10 +367,8 @@ router.get('/today/summary', wrap(async (req, res) => {
   res.json(out);
 }));
 
-// prompt for Claude Desktop (Gmail) covering the emails due today (optionally for one college)
-router.post('/prompt/emails', wrap(async (req, res) => {
-  const settings = await getSettings(req.seg.slug);
-  const { senderName, college, step, owner } = req.body || {};
+// email tasks due today for the Master / card filters, with the per-organisation demo link filled in where the step draft needs it
+async function emailTasksFor(req, settings, { college, step, owner }) {
   // owner: '' / undefined = everyone, 'none' = unassigned, else that owner (master prompt follows the owner tabs)
   const ownerOk = (i) => !owner || (owner === 'none' ? !i.owner : i.owner === owner);
   // step: '' / undefined = Sab, else only that step (0 = Primary, 1 = Follow-up 1, ...), same as the Follow-up dropdown
@@ -384,7 +383,41 @@ router.post('/prompt/emails', wrap(async (req, res) => {
     if (r.url) demoLinks[key] = r.url; else { demoErrors[key] = r.error; if (r.failed) demoFailed.add(t.college); }
   }
   for (const t of items) { t.demoLink = demoLinks[String(t.collegeId)] || ''; t.demoError = demoErrors[String(t.collegeId)] || ''; }
-  res.json({ ...buildEmailPrompt(items, settings.emailSteps, senderName, req.seg.unit), demoFailed: [...demoFailed] });
+  return { items, demoFailed: [...demoFailed] };
+}
+
+// prompt for Claude Desktop (Gmail) covering the emails due today (optionally for one college)
+router.post('/prompt/emails', wrap(async (req, res) => {
+  const settings = await getSettings(req.seg.slug);
+  const { senderName } = req.body || {};
+  const { items, demoFailed } = await emailTasksFor(req, settings, req.body || {});
+  res.json({ ...buildEmailPrompt(items, settings.emailSteps, senderName, req.seg.unit), demoFailed });
+}));
+
+// Gmail drafts (never sent): one draft per ready email task, created in the college owner's own Gmail
+router.post('/drafts/emails', wrap(async (req, res) => {
+  const settings = await getSettings(req.seg.slug);
+  const { redo } = req.body || {};
+  const { items, demoFailed } = await emailTasksFor(req, settings, req.body || {});
+  const { ready, skipped } = classifyEmailItems(items.filter((i) => i.channel === 'email'), settings.emailSteps);
+  const who = (t) => `${t.college} / ${t.name || t.role}`;
+  const accounts = gmail.readTokens();
+  const already = new Map((await Contact.find({ _id: { $in: ready.map((t) => t.contactId) } }, 'draftedStep').lean()).map((c) => [String(c._id), c.draftedStep]));
+  const created = [], failed = [];
+  for (const t of ready) {
+    if (!t.owner) { skipped.push(`${who(t)}: owner set nahi hai (kis Gmail me draft banana hai pata nahi)`); continue; }
+    if (!accounts[t.owner]) { skipped.push(`${who(t)}: ${t.owner} ka Gmail connect nahi hai`); continue; }
+    if (!redo && already.get(String(t.contactId)) === t.stepIndex) { skipped.push(`${who(t)}: "${t.stepLabel}" ka draft pehle ban chuka hai`); continue; }
+    const step = settings.emailSteps[t.stepIndex];
+    try {
+      const msg = gmail.renderEmail(t, step);
+      const d = await gmail.createDraft(t.owner, { to: t.email, subject: msg.subject, body: msg.body });
+      await Contact.updateOne({ _id: t.contactId }, { draftedStep: t.stepIndex, draftedAt: new Date() });
+      const attach = !String(step.attachmentUrl || '').trim() ? String(step.attachment || '').trim() : '';
+      created.push({ college: t.college.replace('[DEMO] ', ''), name: t.name || t.role, email: t.email, step: t.stepLabel, owner: t.owner, link: d.link, attach });
+    } catch (e) { failed.push(`${who(t)}: ${e.message}`); }
+  }
+  res.json({ created, skipped, failed, demoFailed });
 }));
 
 // ---------- finished list: everyone whose Email or LinkedIn steps are all sent (candidates to delete for good) ----------

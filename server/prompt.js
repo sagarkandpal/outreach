@@ -16,11 +16,19 @@ function firstName(full) {
   return parts[0] || '';
 }
 
-// items: output of /today (email items only are used). steps: settings.emailSteps
-// senderName: replaces {sender_name} in drafts (optional; drafts without the placeholder are unaffected)
-function buildEmailPrompt(items, steps, senderName, unit = 'College') {
-  const sender = String(senderName || '').trim();
-  const emailItems = items.filter((i) => i.channel === 'email');
+// the owner's sign-off replaces the draft's own closing + {sender_name}; no owner = draft stays as written
+function applySignature(text, o) {
+    if (!o || !SIGNATURES[o]) return text;
+    const sig = `Best regards,\n${SIGNATURES[o].name}\n${TITLE_LINE}\n[LinkedIn](${SIGNATURES[o].linkedin})`;
+    // a trailing company line ("PanScience Innovations | Botza AI") belongs to the closing the sign-off replaces
+    const company = '(?:\\n[ \\t]*PanScience Innovations \\| Botza AI)?';
+    const closing = new RegExp(`\\n+(?:best regards|best|thanks|thank you|regards|warm regards|kind regards|cheers|sincerely),?[ \\t]*\\n+[ \\t]*\\{sender_name\\}[ \\t]*${company}[ \\t]*$`, 'i');
+    if (closing.test(text)) return text.replace(closing, () => `\n\n${sig}`);
+    return text.replace(new RegExp(`\\n*\\{sender_name\\}[ \\t]*${company}[ \\t]*$`), () => `\n\n${sig}`);
+}
+
+// which email tasks can be turned into a message right now, and why the others cannot
+function classifyEmailItems(emailItems, steps) {
   const skipped = [];
   const ready = [];
   for (const t of emailItems) {
@@ -33,6 +41,15 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
     else if (/\{first_name\}/.test(draft) && !firstName(t.name)) skipped.push(`${t.college} / ${t.role}: contact ka naam nahi hai, draft mein {first_name} hai`);
     else ready.push(t);
   }
+  return { ready, skipped };
+}
+
+// items: output of /today (email items only are used). steps: settings.emailSteps
+// senderName: replaces {sender_name} in drafts (optional; drafts without the placeholder are unaffected)
+function buildEmailPrompt(items, steps, senderName, unit = 'College') {
+  const sender = String(senderName || '').trim();
+  const emailItems = items.filter((i) => i.channel === 'email');
+  const { ready, skipped } = classifyEmailItems(emailItems, steps);
   const missingDrafts = [...new Set(emailItems.filter((t) => !(steps[t.stepIndex] && steps[t.stepIndex].draft || '').trim()).map((t) => t.stepLabel))];
 
   const usedSteps = [...new Set(ready.map((t) => t.stepIndex))].sort((a, b) => a - b);
@@ -45,15 +62,7 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
   const signerOf = (t) => (SIGNATURES[t.owner] ? t.owner : '');
   const signers = [...new Set(ready.map(signerOf).filter(Boolean))];
   // owner's sign-off replaces the draft's own closing + {sender_name}; no owner = draft stays as written
-  const signed = (text, o) => {
-    if (!o) return text;
-    const sig = `Best regards,\n${SIGNATURES[o].name}\n${TITLE_LINE}\n[LinkedIn](${SIGNATURES[o].linkedin})`;
-    // a trailing company line ("PanScience Innovations | Botza AI") belongs to the closing the sign-off replaces
-    const company = '(?:\\n[ \\t]*PanScience Innovations \\| Botza AI)?';
-    const closing = new RegExp(`\\n+(?:best regards|best|thanks|thank you|regards|warm regards|kind regards|cheers|sincerely),?[ \\t]*\\n+[ \\t]*\\{sender_name\\}[ \\t]*${company}[ \\t]*$`, 'i');
-    if (closing.test(text)) return text.replace(closing, () => `\n\n${sig}`);
-    return text.replace(new RegExp(`\\n*\\{sender_name\\}[ \\t]*${company}[ \\t]*$`), () => `\n\n${sig}`);
-  };
+  const signed = applySignature;
   const blocks = [];
   for (const t of ready) if (!blocks.some((b) => b.i === t.stepIndex && b.o === signerOf(t))) blocks.push({ i: t.stepIndex, o: signerOf(t) });
   blocks.sort((a, b) => a.i - b.i || a.o.localeCompare(b.o));
@@ -94,4 +103,4 @@ ${rows}
   return { prompt, count: ready.length, skipped, missingDrafts, readyIds: ready.map((t) => String(t.contactId)) };
 }
 
-module.exports = { buildEmailPrompt, firstName };
+module.exports = { buildEmailPrompt, classifyEmailItems, applySignature, firstName, SIGNATURES };

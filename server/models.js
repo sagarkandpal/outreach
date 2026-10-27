@@ -56,6 +56,8 @@ const contactSchema = new mongoose.Schema(
     linkedinSent: { type: [Date], default: [] },
     // startups: when the connection request was accepted (follow-ups start after this)
     linkedinConnectedAt: Date,
+    draftedStep: Number, // step index a Gmail draft was last made for (so a second click does not duplicate it)
+    draftedAt: Date,
     replyNote: { type: String, default: '' },
     repliedAt: Date,
   },

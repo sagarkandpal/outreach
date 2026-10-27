@@ -145,6 +145,7 @@ async function renderToday() {
       <button class="btn primary small" id="masterCopy">${ic('copy')}Master Prompt <span id="masterCount" style="margin:0 4px">${mine0.filter((i) => i.channel === 'email').length}</span> emails</button>
       <button class="btn primary small" id="masterSent">${ic('check')}Master Sab Bhej diya <span id="masterSentCount" style="margin-left:4px">${mine0.length}</span></button>
       <small class="muted" id="masterHint"></small>
+      <div id="gmailBar" style="flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px"></div>
       <div id="masterSkipped" style="flex-basis:100%;font-size:13px;color:#b45309"></div>
     </div>
     <div class="help"><b>Kaise use karein:</b> message bhejo → <b>✓ Bhej diya</b> dabao. Email ka agla follow-up apne aap 2 din baad yahin aa jayega. Card me <b>✓ Sab Bhej diya</b> dabake us ${esc(seg.unit.toLowerCase())} ke saare tasks ek saath mark karo. Kisi ka reply aaye toh <b>Reply aaya</b> dabao — uske baaki follow-ups ruk jayenge. Upar search me email dalo toh turant pata chal jayega wo kis ${esc(seg.unit.toLowerCase())} ka hai.</div>
@@ -184,6 +185,7 @@ async function renderToday() {
     document.getElementById('stLateBox').classList.toggle('bad', late > 0);
     document.getElementById('stColleges').textContent = new Set(mine.map((i) => i.college)).size;
     document.getElementById('masterCount').textContent = mine.filter((i) => i.channel === 'email').length;
+    const gc = document.getElementById('gmailCount'); if (gc) gc.textContent = mine.filter((i) => i.channel === 'email').length;
     document.getElementById('masterSentCount').textContent = mine.length;
     document.getElementById('masterHint').textContent = `${stepLabelOf()} · ${OWNERS[todayOwner] || (todayOwner === 'none' ? 'Unassigned' : 'Sab')} ke saare ${seg.unitPlural.toLowerCase()}`;
   };
@@ -326,6 +328,40 @@ async function renderToday() {
     const note = document.getElementById('masterSkipped');
     note.innerHTML = r.skipped.length ? `<b>${r.skipped.length} skip hue:</b><ul>${r.skipped.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>` : '';
   });
+  // Gmail drafts: connect each owner's Gmail once, then one click makes a draft per ready email (nothing is sent)
+  const gmailBar = document.getElementById('gmailBar');
+  const drawGmail = async () => {
+    let g;
+    try { g = await api('GET', '/gmail/status'); } catch { gmailBar.innerHTML = ''; return; }
+    const emailCount = items.filter((i) => ownerMatch(i) && stepMatch(i) && i.channel === 'email').length;
+    gmailBar.innerHTML = `<b>Gmail Drafts</b>
+      ${Object.keys(OWNERS).map((o) => g.accounts[o]
+        ? `<span class="tag">${esc(OWNERS[o])}: ${esc(g.accounts[o])} ✓</span><button class="link" data-gdisc="${o}">hatao</button>`
+        : `<button class="btn small" data-gconn="${o}" ${g.configured ? '' : 'disabled title=".env me GOOGLE_CLIENT_ID/SECRET nahi hain"'}>${esc(OWNERS[o])} ka Gmail connect karo</button>`).join('')}
+      <button class="btn primary small" id="gmailDrafts" ${Object.values(g.accounts).some(Boolean) ? '' : 'disabled'}>${ic('mail')}Gmail me drafts banao <span id="gmailCount">${emailCount}</span> emails</button>
+      <label class="muted"><input type="checkbox" id="gmailRedo"> pehle bane drafts dobara bhi banao</label>
+      <small class="muted">Sirf draft banta hai, bhejna aap khud karoge.</small>`;
+    gmailBar.querySelectorAll('[data-gconn]').forEach((b) => b.onclick = () => { location.href = `/api/gmail/connect?owner=${b.dataset.gconn}`; });
+    gmailBar.querySelectorAll('[data-gdisc]').forEach((b) => b.onclick = () => guard(async () => {
+      if (!confirm(`${OWNERS[b.dataset.gdisc]} ka Gmail hata dun?`)) return;
+      await api('DELETE', `/gmail/${b.dataset.gdisc}`); drawGmail();
+    }));
+    const go = document.getElementById('gmailDrafts');
+    go.onclick = () => guard(async () => {
+      const senderName = document.getElementById('masterSender').value.trim();
+      go.disabled = true; toast('Drafts ban rahe hain... (demo link ke saath thoda time lag sakta hai)');
+      let r;
+      try { r = await api('POST', '/drafts/emails', { senderName, step: todayStep, owner: todayOwner, redo: document.getElementById('gmailRedo').checked }); }
+      finally { go.disabled = false; }
+      if (r.demoFailed && r.demoFailed.length) toast(`${r.demoFailed.join(', ')}: is site par Botza demo nahi lag sakta`);
+      const note = document.getElementById('masterSkipped');
+      note.innerHTML = `<div style="color:#166534"><b>${r.created.length} drafts ban gaye</b> (Gmail ke Drafts me dekho, bhejna aapko hai)${r.created.length ? `<ul>${r.created.map((c) => `<li><a href="${esc(c.link)}" target="_blank" rel="noopener">${esc(c.college)} / ${esc(c.name)}</a> · ${esc(c.step)} · ${esc(OWNERS[c.owner])}${c.attach ? ` · <b>attach karna hai: ${esc(c.attach)}</b>` : ''}</li>`).join('')}</ul>` : ''}</div>`
+        + (r.skipped.length ? `<b>${r.skipped.length} skip hue:</b><ul>${r.skipped.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '')
+        + (r.failed.length ? `<div style="color:#b91c1c"><b>${r.failed.length} fail hue:</b><ul>${r.failed.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : '');
+      toast(`${r.created.length} drafts ban gaye${r.skipped.length + r.failed.length ? ` · ${r.skipped.length + r.failed.length} skip/fail` : ''}`);
+    });
+  };
+  drawGmail();
   // master "Sab Bhej diya": every task currently visible (owner tab + Follow-up filter), across all cards
   document.getElementById('masterSent').onclick = () => guard(async () => {
     const visible = items.filter((i) => ownerMatch(i) && stepMatch(i));

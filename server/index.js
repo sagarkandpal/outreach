@@ -3,6 +3,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const express = require('express');
 const mongoose = require('mongoose');
 const routes = require('./routes');
+const gmail = require('./gmail');
 const { getSettings, ensureSegments, College, Contact, Segment } = require('./models');
 
 const PORT = process.env.PORT || 3000;
@@ -12,6 +13,8 @@ const DB_NAME = process.env.DB_NAME || 'botza_outreach';
 
 const app = express();
 app.use(express.json());
+app.use('/api/gmail', gmail.router);
+app.get('/api/auth/google/callback', gmail.callback);
 app.use('/api', routes);
 
 // Shows which database this copy of the app is really talking to
