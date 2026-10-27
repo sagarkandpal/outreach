@@ -84,6 +84,24 @@ async function fillDemo(t) {
     return false;
   }
 }
+// centered result box after "Gmail me drafts banao"
+function draftsPopup(r) {
+  const n = r.created.length, other = r.skipped.length + r.failed.length;
+  const back = document.createElement('div');
+  back.className = 'popup-back';
+  back.innerHTML = `<div class="popup" role="dialog" aria-modal="true">
+    <div class="pop-icon ${n ? '' : 'warn'}">${n ? '✓' : '!'}</div>
+    <h3>${n ? `${n} draft${n > 1 ? 's' : ''} created ✓` : 'Koi draft nahi bana'}</h3>
+    <div class="muted">${n ? 'Gmail ke Drafts me dekho, bhejna aapko hai.' : 'Wajah neeche bar me likhi hai.'}${other ? ` ${other} skip / fail hue.` : ''}</div>
+    ${n ? `<ul>${r.created.map((c) => `<li><a href="${esc(c.link)}" target="_blank" rel="noopener">${esc(c.college)} / ${esc(c.name)}</a> · ${esc(c.step)}${c.attach ? ` · <b>attach: ${esc(c.attach)}</b>` : ''}</li>`).join('')}</ul>` : ''}
+    <div class="pop-actions"><button class="btn primary" data-close>OK</button></div></div>`;
+  const close = () => { back.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter') close(); };
+  back.onclick = (e) => { if (e.target === back || e.target.dataset.close !== undefined) close(); };
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(back);
+  back.querySelector('[data-close]').focus();
+}
 const safeUrl =(u) => (/^https?:\/\//i.test(u) ? u : u ? 'https://' + u : '');
 
 async function guard(fn) {
@@ -359,7 +377,7 @@ async function renderToday() {
       note.innerHTML = `<div style="color:#166534"><b>${r.created.length} drafts ban gaye</b> (Gmail ke Drafts me dekho, bhejna aapko hai)${r.created.length ? `<ul>${r.created.map((c) => `<li><a href="${esc(c.link)}" target="_blank" rel="noopener">${esc(c.college)} / ${esc(c.name)}</a> · ${esc(c.step)} · ${esc(OWNERS[c.owner])}${c.attach ? ` · <b>attach karna hai: ${esc(c.attach)}</b>` : ''}</li>`).join('')}</ul>` : ''}</div>`
         + (r.skipped.length ? `<b>${r.skipped.length} skip hue:</b><ul>${r.skipped.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '')
         + (r.failed.length ? `<div style="color:#b91c1c"><b>${r.failed.length} fail hue:</b><ul>${r.failed.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : '');
-      toast(`${r.created.length} drafts ban gaye${r.skipped.length + r.failed.length ? ` · ${r.skipped.length + r.failed.length} skip/fail` : ''}`);
+      draftsPopup(r);
     });
   };
   drawGmail();

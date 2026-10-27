@@ -248,3 +248,12 @@ main:has(.side-layout) { max-width: none; margin: 0; }
 .dash-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
 .owner-dash .late { color: var(--red); font-weight: 700; }
 @media (max-width: 640px) { .dash-grid { grid-template-columns: 1fr; } }
+
+/* result popup (Gmail drafts created) */
+.popup-back { position: fixed; inset: 0; background: rgba(20,19,15,.45); display: grid; place-items: center; z-index: 60; padding: 16px; }
+.popup { background: var(--surface); border-radius: 16px; padding: 22px 24px; width: min(480px, 100%); max-height: 80vh; overflow: auto; box-shadow: 0 24px 60px -12px rgba(0,0,0,.4); }
+.popup h3 { margin: 0 0 4px; font-size: 18px; }
+.popup .pop-icon { width: 44px; height: 44px; border-radius: 50%; background: var(--green-bg); color: var(--green); display: grid; place-items: center; font-size: 24px; margin-bottom: 10px; }
+.popup .pop-icon.warn { background: var(--amber-bg); color: var(--amber); }
+.popup ul { margin: 10px 0; padding-left: 18px; font-size: 13.5px; }
+.popup .pop-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
