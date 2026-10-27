@@ -262,7 +262,7 @@ const collegeLinkedinSteps = [
     label: 'Connection Note', gapDays: 0,
     draft: `Hi {first_name}, I'm {sender_name} from PanScience Innovations, where we build AI ventures. I'm working on Botza AI, which helps students and parents find answers on college websites. Thought it would be valuable to connect and exchange perspectives.`,
   },
-  {
+    {
     label: 'Follow-up 1', gapDays: 2,
     draft: `Hi {first_name}, thanks for connecting!
 
@@ -270,15 +270,23 @@ When prospective students visit {college}'s website, they may have questions abo
 
 Botza AI helps visitors get answers from the information your institution provides, without having to search through multiple pages.
 
+Here's a short demo video showing how it works: https://drive.google.com/file/d/1l3wG95_mcjCa4kSPCZKQEWn5ko8EoiSo/view?usp=sharing
+
 Would you be open to a quick look at how this could work for {college}?`,
   },
   {
     label: 'Follow-up 2', gapDays: 2,
-    draft: `Hi {first_name}, one thought worth sharing: the questions students ask can also reveal which information is difficult to find on a college website.
+    draft: `Hi {first_name}, I've put together a small Botza demo for {college}, built only from publicly available information on your website, so you can see how it answers student questions: {demo_link}
 
-Botza can help answer routine queries and, through available analytics, show your team what visitors are asking.
+It's a sample experience, not a live deployment at {college}.
 
-If useful, I can share a small demo based on publicly available information from {college}'s website. Would that be relevant to your team?`,
+Would you be open to a short 15-minute call to discuss whether this could work for your students? Happy to work around your schedule.
+{{if_no_demo}}
+Hi {first_name}, one thought worth sharing: the questions students ask can also reveal which information is difficult to find on a college website.
+
+Botza can help answer routine queries and, through available analytics, show your team what visitors are asking. Here's a short brochure explaining how it works: https://drive.google.com/file/d/1PMXWurspMRehUGZLoPF8zaWzWRLW_7e7/view?usp=sharing
+
+Would you be open to a short 15-minute call to see whether this could be a fit for {college}? Happy to work around your schedule.`,
   },
 ];
 

@@ -2,7 +2,7 @@ const express = require('express');
 const { College, Contact, Segment, History, Settings, Removed, settingsKey, PROTECTED_SEGMENTS, DEFAULT_SEGMENT_SLUGS, getSettings, getSegment } = require('./models');
 const { decorate } = require('./due');
 const { buildEmailPrompt, firstName } = require('./prompt');
-const { hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink } = require('./demo');
+const { splitNoDemo, hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink } = require('./demo');
 
 const router = express.Router();
 
@@ -247,21 +247,24 @@ async function buildToday(req, settings, onlyChannel, now = new Date(), pre) {
       if (i === -1) continue;
       const college = cname[String(c.collegeId)] || '?';
       // ready-to-paste text for channels without a connector (LinkedIn); email goes through the Claude prompt
-      const message = channel === 'linkedin'
-        ? String(steps[i].draft || '').trim()
+      const fill = (text) => String(text || '').trim()
             .replace(/\{first_name\}/g, firstName(c.name))
             .replace(/\{(?:college|company)\}/g, () => college.replace('[DEMO] ', ''))
             .replace(/\{college_website\}/gi, (m) => cweb[String(c.collegeId)] || m)
-            .replace(/\{attachment_link\}/gi, (m) => String(steps[i].attachmentUrl || '').trim() || m)
-        : '';
+            .replace(/\{attachment_link\}/gi, (m) => String(steps[i].attachmentUrl || '').trim() || m);
+      const [mainText, noDemoText] = channel === 'linkedin' ? splitNoDemo(steps[i].draft) : ['', ''];
+      let message = channel === 'linkedin' ? fill(mainText) : '';
+      const fallbackMessage = noDemoText.trim() ? fill(noDemoText) : '';
       // demo link is only filled from the cache here; the app asks /colleges/:id/demo when it is still missing
       const demoLink = cdemo[String(c.collegeId)];
-      const needsDemo = channel === 'linkedin' && hasPlaceholder(message);
+      let needsDemo = channel === 'linkedin' && hasPlaceholder(message);
+      // no demo possible for this organisation (site cannot show Botza, or no website): use the {{if_no_demo}} version
+      if (needsDemo && !demoLink && fallbackMessage && (cdemoFail[String(c.collegeId)] || !cweb[String(c.collegeId)])) { message = fallbackMessage; needsDemo = false; }
       items.push({
         contactId: c._id, collegeId: c.collegeId, college, website: cweb[String(c.collegeId)] || '', owner: cowner[String(c.collegeId)] || '', role: c.role, name: c.name,
         email: c.email, linkedinUrl: c.linkedinUrl, channel, stepIndex: i, stepLabel: steps[i].label,
         state: cells[i].state, daysLate: cells[i].days || 0, isFirst: i === 0,
-        message: needsDemo && demoLink ? fillDemoLink(message, demoLink) : message, demoPending: needsDemo && !demoLink, demoFailed: cdemoFail[String(c.collegeId)] || '',
+        message: needsDemo && demoLink ? fillDemoLink(message, demoLink) : message, demoPending: needsDemo && !demoLink, fallbackMessage: needsDemo && !demoLink ? fallbackMessage : '', demoFailed: cdemoFail[String(c.collegeId)] || '',
         attachment: channel === 'email' && !String(steps[i].attachmentUrl || '').trim() ? String(steps[i].attachment || '').trim() : '',
       });
     }

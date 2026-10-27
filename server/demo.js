@@ -3,6 +3,9 @@ const { College } = require('./models');
 // drafts can write {demo_link}, [demo link] (any case) or the older [Website Link With Botza]
 const PLACEHOLDER = /\{demo[ _]?link\}|\[demo[ _]?link\]|\[Website Link With Botza\]/gi;
 const hasPlaceholder = (text) => new RegExp(PLACEHOLDER.source, 'i').test(String(text || ''));
+// a draft may carry a second version after a {{if_no_demo}} line: used when no demo link can be made for that organisation
+const NO_DEMO_MARK = /\r?\n[ \t]*\{\{if_no_demo\}\}[ \t]*\r?\n/i;
+const splitNoDemo = (text) => { const [main, ...rest] = String(text || '').split(NO_DEMO_MARK); return [main, rest.join('\n')]; };
 const fillDemoLink = (text, link) => String(text || '').replace(PLACEHOLDER, () => link);
 
 // startups show their own chatbot (the service falls back to the college one when these are left out)
@@ -76,4 +79,4 @@ async function ensureDemoLink(college) {
   return { url };
 }
 
-module.exports = { hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink };
+module.exports = { splitNoDemo, hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink };

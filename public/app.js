@@ -72,7 +72,17 @@ async function fillDemo(t) {
     t.message = t.message.replace(/\{demo[ _]?link\}|\[demo[ _]?link\]|\[Website Link With Botza\]/gi, () => r.url);
     t.demoPending = false;
     return true;
-  } catch (e) { toast(`Demo link nahi ban paya: ${e.message}`); if (/nahi lag sakta|load nahi|khul nahi/.test(e.message)) render(); return false; }
+  } catch (e) {
+    // demo cannot be made: use the {{if_no_demo}} version of the draft when it has one (not for a temporary service problem)
+    if (t.fallbackMessage && !/DEMO_API_URL|nahi pahunch|check nahi ho paya/.test(e.message)) {
+      t.message = t.fallbackMessage; t.demoPending = false;
+      toast('Demo nahi ban paya, brochure + call wala message ready hai');
+      return true;
+    }
+    toast(`Demo link nahi ban paya: ${e.message}`);
+    if (/nahi lag sakta|load nahi|khul nahi/.test(e.message)) render();
+    return false;
+  }
 }
 const safeUrl =(u) => (/^https?:\/\//i.test(u) ? u : u ? 'https://' + u : '');
 
@@ -938,7 +948,7 @@ async function renderSettings() {
         ${attachBoxes('email', i)}
         <textarea data-draft="email:${i}" placeholder="Subject: ...&#10;&#10;Hi {first_name}, ...">${esc(d)}</textarea>${signaturePreview()}</div>`).join('')}
       <h3>💼 LinkedIn drafts</h3>
-      <p class="muted">Har step ka message yahan paste karo. Placeholders: <code>{first_name}</code>, <code>{company}</code> (= ${esc(seg.unit.toLowerCase())} ka naam; <code>{college}</code> bhi chalta hai), <code>{college_website}</code>, <code>{sender_name}</code>. Aaj ka kaam me LinkedIn task par 📋 dabane se ye copy hoga.</p>
+      <p class="muted">Har step ka message yahan paste karo. Placeholders: <code>{first_name}</code>, <code>{company}</code> (= ${esc(seg.unit.toLowerCase())} ka naam; <code>{college}</code> bhi chalta hai), <code>{college_website}</code>, <code>{sender_name}</code>, <code>{demo_link}</code>. Aaj ka kaam me LinkedIn task par 📋 dabane se ye copy hoga.<br>Agar kisi ${esc(seg.unit.toLowerCase())} ka demo link nahi ban sakta to alag message bhejna ho: draft me <code>{demo_link}</code> wala message likho, phir ek alag line me <code>{{if_no_demo}}</code> likho, uske neeche wo message jo demo na bane tab jana chahiye.</p>
       ${drafts.linkedin.map((d, i) => `<div style="margin-bottom:12px"><b>${i === 0 ? firstNames.linkedin : 'Follow-up ' + i}</b>
         ${attachBoxes('linkedin', i)}
         <textarea data-draft="linkedin:${i}" placeholder="Hi {first_name}, ...">${esc(d)}</textarea></div>`).join('')}
