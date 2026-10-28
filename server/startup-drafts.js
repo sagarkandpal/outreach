@@ -260,7 +260,7 @@ PanScience Innovations | Botza AI`,
 const collegeLinkedinSteps = [
   {
     label: 'Connection Note', gapDays: 0,
-    draft: `Hi {first_name}, I'm {sender_name} from PanScience Innovations, where we build AI ventures. I'm working on Botza AI, which helps students and parents find answers on college websites. Thought it would be valuable to connect and exchange perspectives.`,
+    draft: `Hi {first_name}, I'm {sender_name} from PanScience Innovations, where we build AI ventures. I'm working on Botza AI (https://botza.panscience.ai/), which helps students and parents find answers on college websites. Thought it would be valuable to connect and exchange perspectives.`,
   },
     {
     label: 'Follow-up 1', gapDays: 2,
