@@ -1,8 +1,7 @@
 // Default sequence for the "EdTech Ins" segment (from "Botza AI Outreach for edtech.docx").
 // {company} = the institute name, {demo_link} = the per-institute website preview.
 // Steps with an `attachment` are attached by hand to the Gmail draft (brochure, comparison sheet).
-// TODO: EdTech demo video link (to be shared). Until then drafts show this placeholder.
-const DEMO_VIDEO = '[Demo Video Link]';
+const DEMO_VIDEO = 'https://drive.google.com/file/d/1SumHameFyTqytMfkoaOscpEaNawtATNu/view?usp=sharing';
 
 const emailSteps = [
   {
@@ -53,7 +52,7 @@ I thought a quick demonstration would explain Botza better than another long ema
 
 In this short video, you'll see how a student can ask questions about a course and receive answers using the institute's own information.
 
-Watch here: ${DEMO_VIDEO}
+Watch here: [Demo Video](${DEMO_VIDEO})
 
 After watching, I'd be interested to know if this kind of experience would be useful on {company}'s website.
 
