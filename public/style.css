@@ -267,5 +267,8 @@ main:has(.side-layout) { max-width: none; margin: 0; }
 .dash-table th.num, .dash-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .dash-table th.grp { text-align: center; border-bottom: 1px solid var(--line); }
 .dash-table td.num { font-size: 15px; }
+.dash-two.three { grid-template-columns: 1fr 1fr 1fr; }
+.dash-table .tot { background: var(--surface-2); }
+.dash-table .tot.all { font-weight: 700; border-left: 2px solid var(--line-strong); }
 .dash-table tr.total td { font-weight: 700; background: var(--surface-2); border-top: 2px solid var(--line-strong); }
 @media (max-width: 520px) { .dash-grid.two { grid-template-columns: 1fr; } }

@@ -646,24 +646,28 @@ async function renderDashboard() {
   }
   const days = Object.keys(byDay).sort().reverse();
   const num = (n) => (n ? `<b>${n}</b>` : '<span class="muted">0</span>');
+  const sum = (x) => x.email + x.linkedin; // total outreach = Email + LinkedIn
+  const both = (x) => PEOPLE.reduce((n, [o]) => n + sum(x[o]), 0); // Sagar + Arjun
   const card = ([o, name]) => `
     <div class="dash-card kpi">
       <div class="dash-label" style="font-size:16px;font-weight:700">${name}</div>
-      <div class="dash-two">
+      <div class="dash-two three">
         <div><div class="dash-num">${tot[o].email}</div><div class="dash-foot">Email bheje</div></div>
         <div><div class="dash-num">${tot[o].linkedin}</div><div class="dash-foot">LinkedIn bheje</div></div>
+        <div><div class="dash-num">${sum(tot[o])}</div><div class="dash-foot">Total outreach</div></div>
       </div>
     </div>`;
-  const row = (d) => `<tr><td class="who"><b>${prettyDate(d)}</b>${d === data.today ? ' <small class="muted">aaj</small>' : ''}</td>${PEOPLE.map(([o]) => `<td class="num">${num(byDay[d][o].email)}</td><td class="num">${num(byDay[d][o].linkedin)}</td>`).join('')}</tr>`;
+  const cells = (x) => PEOPLE.map(([o]) => `<td class="num">${num(x[o].email)}</td><td class="num">${num(x[o].linkedin)}</td><td class="num tot">${num(sum(x[o]))}</td>`).join('');
+  const row = (d) => `<tr><td class="who"><b>${prettyDate(d)}</b>${d === data.today ? ' <small class="muted">aaj</small>' : ''}</td>${cells(byDay[d])}<td class="num tot all">${num(both(byDay[d]))}</td></tr>`;
   view.innerHTML = `
-    <div class="dash-top"><h2>Dashboard</h2><p class="muted" style="margin:0">Ab tak kisne kitne Email aur LinkedIn bheje (saare segments milakar).</p></div>
+    <div class="dash-top"><h2>Dashboard</h2><p class="muted" style="margin:0">Ab tak kisne kitne Email aur LinkedIn bheje (saare segments milakar). Total = Email + LinkedIn.</p></div>
     <div class="dash-grid two">${PEOPLE.map(card).join('')}</div>
     <div class="card"><h3 style="margin-top:0">Date ke hisaab se</h3>
       ${days.length ? `<div class="grid-wrap"><table class="grid dash-table"><thead>
-        <tr><th rowspan="2">Date</th><th class="num grp" colspan="2">Sagar</th><th class="num grp" colspan="2">Arjun</th></tr>
-        <tr><th class="num">Email</th><th class="num">LinkedIn</th><th class="num">Email</th><th class="num">LinkedIn</th></tr></thead>
+        <tr><th rowspan="2">Date</th><th class="num grp" colspan="3">Sagar</th><th class="num grp" colspan="3">Arjun</th><th class="num tot all" rowspan="2">Dono ka total</th></tr>
+        <tr>${PEOPLE.map(() => '<th class="num">Email</th><th class="num">LinkedIn</th><th class="num tot">Total</th>').join('')}</tr></thead>
         <tbody>${days.map(row).join('')}
-        <tr class="total"><td>Total</td>${PEOPLE.map(([o]) => `<td class="num">${tot[o].email}</td><td class="num">${tot[o].linkedin}</td>`).join('')}</tr></tbody></table></div>` : '<div class="card-done">Abhi tak koi message nahi bheja gaya</div>'}
+        <tr class="total"><td>Total</td>${PEOPLE.map(([o]) => `<td class="num">${tot[o].email}</td><td class="num">${tot[o].linkedin}</td><td class="num tot">${sum(tot[o])}</td>`).join('')}<td class="num tot all">${both(tot)}</td></tr></tbody></table></div>` : '<div class="card-done">Abhi tak koi message nahi bheja gaya</div>'}
       ${unassigned ? `<p class="muted" style="margin:10px 0 0">Note: ${unassigned} messages un colleges/companies ke hain jinka owner set nahi hai, wo upar nahi gine gaye.</p>` : ''}
     </div>`;
 }
