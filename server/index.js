@@ -42,6 +42,7 @@ mongoose
     await ensureSegments(); // built-in segments (Colleges, Startups) + tag old colleges
     await getSettings('college'); // creates default settings on first run
     if (await Segment.exists({ slug: 'startup' })) await getSettings('startup'); // not after Startups was deleted
+    if (await Segment.exists({ slug: 'edtech' })) await getSettings('edtech');
     const c = mongoose.connection;
     console.log(`Connected to DB "${c.name}" on ${c.host}  (${process.env.MONGO_URI ? 'cloud/.env' : 'LOCAL'})`);
     app.listen(PORT, () => console.log(`Botza tracker running: http://localhost:${PORT}`));

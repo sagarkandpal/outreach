@@ -2,17 +2,19 @@
 // Keeps each step's gapDays, and the attachment name + link already saved in Settings for steps that still use an attachment.
 // Usage: node scripts/update-startup-drafts.js <segment>          -> dry run (prints what would change)
 //        node scripts/update-startup-drafts.js <segment> --apply  -> actually save
-// <segment> = college | startups (the slug as saved in the DB)
+// <segment> = college | startups | edtech (the slug as saved in the DB)
 require('dotenv').config();
 const mongoose = require('mongoose');
 const { Settings, settingsKey } = require('../server/models');
 const drafts = require('../server/startup-drafts');
+const edtech = require('../server/edtech-drafts');
 
 const apply = process.argv.includes('--apply');
 const slug = process.argv.slice(2).find((a) => !a.startsWith('--'));
 const SOURCES = {
   college: { email: drafts.collegeEmailSteps, linkedin: drafts.collegeLinkedinSteps },
   startups: { email: drafts.emailSteps, linkedin: drafts.linkedinSteps },
+  edtech: { email: edtech.emailSteps, linkedin: edtech.linkedinSteps },
 };
 
 function merge(saved, wanted, withAttachment) {
@@ -31,7 +33,7 @@ function merge(saved, wanted, withAttachment) {
 
 (async () => {
   const src = SOURCES[slug];
-  if (!src) { console.log('Usage: node scripts/update-startup-drafts.js <college|startups> [--apply]'); return; }
+  if (!src) { console.log('Usage: node scripts/update-startup-drafts.js <college|startups|edtech> [--apply]'); return; }
   await mongoose.connect(process.env.MONGO_URI, { dbName: process.env.DB_NAME || 'botza_outreach' });
   const s = await Settings.findOne({ key: settingsKey(slug) });
   if (!s) { console.log(`No saved settings for "${slug}": the defaults in startup-drafts.js apply already.`); return; }

@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const startup = require('./startup-drafts');
+const edtech = require('./edtech-drafts');
 
 const stepSchema = new mongoose.Schema(
   {
@@ -71,6 +72,7 @@ const collegeLinkedinSteps = () => startup.collegeLinkedinSteps.map((st) => ({ l
 const DEFAULT_SEGMENTS = [
   { slug: 'college', name: 'Colleges', unit: 'College', unitPlural: 'Colleges', linkedinMax: 3, order: 0 },
   { slug: 'startup', name: 'Startups', unit: 'Company', unitPlural: 'Companies', linkedinMax: 3, order: 1 },
+  { slug: 'edtech', name: 'EdTech Ins', unit: 'Company', unitPlural: 'Companies', linkedinMax: 3, order: 2 },
 ];
 
 // the original college settings keep key 'main' so existing data keeps working
@@ -83,6 +85,9 @@ function defaultSettings(slug) {
   }
   if (slug === 'startup') {
     return { key, emailSteps: startup.emailSteps, linkedinSteps: startup.linkedinSteps, roles: ['Founder', 'CEO', 'CTO', 'COO', 'Head of HR'] };
+  }
+  if (slug === 'edtech') {
+    return { key, emailSteps: edtech.emailSteps, linkedinSteps: edtech.linkedinSteps, roles: edtech.roles };
   }
   return { key, emailSteps: genericSteps(5), linkedinSteps: [{ label: 'Connection Note', gapDays: 0 }], roles: [] };
 }
