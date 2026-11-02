@@ -1,5 +1,5 @@
 const express = require('express');
-const { College, Contact, Segment, History, Settings, Removed, settingsKey, PROTECTED_SEGMENTS, DEFAULT_SEGMENT_SLUGS, getSettings, getSegment } = require('./models');
+const { College, Contact, Segment, History, SentArchive, Settings, Removed, settingsKey, PROTECTED_SEGMENTS, DEFAULT_SEGMENT_SLUGS, getSettings, getSegment } = require('./models');
 const { decorate } = require('./due');
 const { buildEmailPrompt, classifyEmailItems, firstName } = require('./prompt');
 const gmail = require('./gmail');
@@ -62,7 +62,9 @@ router.delete('/segments/:slug', wrap(async (req, res) => {
   const slug = req.params.slug;
   if (PROTECTED_SEGMENTS.includes(slug)) return res.status(400).json({ error: 'Colleges segment delete nahi ho sakta, app isi par chalti hai' });
   if (!(await Segment.exists({ slug }))) return res.status(404).json({ error: 'Segment nahi mila' });
-  const orgIds = (await College.find({ segment: slug }, '_id').lean()).map((c) => c._id);
+  const orgs = await College.find({ segment: slug }, 'segment owner').lean();
+  const orgIds = orgs.map((c) => c._id);
+  await archiveSent(await Contact.find({ collegeId: { $in: orgIds } }, 'collegeId emailSent linkedinSent').lean(), Object.fromEntries(orgs.map((o) => [String(o._id), o])));
   const contacts = await Contact.deleteMany({ collegeId: { $in: orgIds } });
   await College.deleteMany({ segment: slug });
   await Settings.deleteOne({ key: settingsKey(slug) });
@@ -70,6 +72,44 @@ router.delete('/segments/:slug', wrap(async (req, res) => {
   await Segment.deleteOne({ slug });
   if (DEFAULT_SEGMENT_SLUGS.includes(slug)) await Removed.updateOne({ slug }, { $setOnInsert: { slug } }, { upsert: true });
   res.json({ ok: true, orgs: orgIds.length, contacts: contacts.deletedCount });
+}));
+
+// ---------- dashboard: messages sent per day / owner / segment / channel (across all segments) ----------
+const localDay = (d) => { const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+
+// one archive increment per (day, segment, owner, channel) for contacts about to be deleted
+async function archiveSent(contacts, orgById) {
+  const tally = new Map();
+  for (const c of contacts) {
+    const o = orgById[String(c.collegeId)];
+    if (!o) continue;
+    for (const [channel, dates] of [['email', c.emailSent || []], ['linkedin', c.linkedinSent || []]]) {
+      for (const d of dates) {
+        const filter = { day: localDay(d), segment: o.segment || 'college', owner: o.owner || '', channel };
+        const k = JSON.stringify(filter);
+        tally.set(k, { filter, n: (tally.get(k) ? tally.get(k).n : 0) + 1 });
+      }
+    }
+  }
+  if (tally.size) await SentArchive.bulkWrite([...tally.values()].map(({ filter, n }) => ({ updateOne: { filter, update: { $inc: { n } }, upsert: true } })));
+}
+
+router.get('/dashboard', wrap(async (req, res) => {
+  const colleges = await College.find({}, 'segment owner').lean();
+  const orgById = Object.fromEntries(colleges.map((c) => [String(c._id), c]));
+  const tally = new Map();
+  const add = (day, segment, owner, channel, n) => { const k = `${day}|${segment}|${owner}|${channel}`; tally.set(k, (tally.get(k) || 0) + n); };
+  for (const c of await Contact.find({}, 'collegeId emailSent linkedinSent').lean()) {
+    const o = orgById[String(c.collegeId)];
+    if (!o) continue;
+    for (const [channel, dates] of [['email', c.emailSent], ['linkedin', c.linkedinSent]]) {
+      for (const d of dates || []) add(localDay(d), o.segment || 'college', o.owner || '', channel, 1);
+    }
+  }
+  for (const a of await SentArchive.find().lean()) add(a.day, a.segment, a.owner, a.channel, a.n);
+  const rows = [...tally].map(([k, n]) => { const [day, segment, owner, channel] = k.split('|'); return { day, segment, owner, channel, n }; });
+  const segments = await Segment.find({}, 'slug name').sort({ order: 1, createdAt: 1 }).lean();
+  res.json({ today: localDay(new Date()), segments: segments.map((s) => ({ slug: s.slug, name: s.name })), rows });
 }));
 
 // every request below works inside one segment (header X-Segment, default 'college')
@@ -155,6 +195,8 @@ router.patch('/colleges/:id/owner', wrap(async (req, res) => {
 }));
 
 router.delete('/colleges/:id', wrap(async (req, res) => {
+  const org = await College.findById(req.params.id, 'segment owner').lean();
+  if (org) await archiveSent(await Contact.find({ collegeId: org._id }, 'collegeId emailSent linkedinSent').lean(), { [String(org._id)]: org });
   await Contact.deleteMany({ collegeId: req.params.id });
   await College.findByIdAndDelete(req.params.id);
   res.json({ ok: true });
@@ -172,7 +214,12 @@ router.patch('/contacts/:id', wrap(async (req, res) => {
 }));
 
 router.delete('/contacts/:id', wrap(async (req, res) => {
-  await Contact.findByIdAndDelete(req.params.id);
+  const c = await Contact.findById(req.params.id, 'collegeId emailSent linkedinSent').lean();
+  if (c) {
+    const org = await College.findById(c.collegeId, 'segment owner').lean();
+    if (org) await archiveSent([c], { [String(org._id)]: org });
+    await Contact.findByIdAndDelete(c._id);
+  }
   res.json({ ok: true });
 }));
 
@@ -469,6 +516,7 @@ router.post('/contacts/delete-bulk', wrap(async (req, res) => {
     } });
   }
   if (ops.length) await History.bulkWrite(ops);
+  await archiveSent(doomed, Object.fromEntries((await segColleges(req).lean()).map((o) => [String(o._id), o])));
   const r = await Contact.deleteMany({ _id: { $in: doomed.map((c) => c._id) } });
   // an organisation left with no contacts goes too, so no empty cards stay behind
   const stillHas = new Set((await Contact.distinct('collegeId', { collegeId: { $in: touched } })).map(String));

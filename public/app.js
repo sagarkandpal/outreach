@@ -120,7 +120,7 @@ async function render() {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === currentTab));
   if (!settings || currentTab === 'settings') settings = await api('GET', '/settings'); // cached: only the Settings tab changes it
   refreshBadges();
-  await ({ today: renderTodayTab, colleges: renderColleges, replied: renderReplied, finished: renderFinished, history: renderHistory, assign: renderAssign, add: renderAdd, settings: renderSettings }[currentTab])();
+  await ({ today: renderTodayTab, colleges: renderColleges, replied: renderReplied, finished: renderFinished, history: renderHistory, dashboard: renderDashboard, assign: renderAssign, add: renderAdd, settings: renderSettings }[currentTab])();
 }
 
 async function refreshBadges() {
@@ -629,6 +629,43 @@ async function renderFinished() {
     const ids = [...b.closest('.li-sec').querySelectorAll('[data-del]:checked')].map((x) => x.dataset.del);
     del(ids, `${ids.length} contact ko`);
   });
+}
+
+// ---------- DASHBOARD: date-wise Email / LinkedIn sent by Sagar and Arjun (all segments together) ----------
+async function renderDashboard() {
+  const data = await api('GET', '/dashboard');
+  const PEOPLE = [['sagar', 'Sagar'], ['arjun', 'Arjun']];
+  const byDay = {}; // day -> owner -> { email, linkedin }
+  const tot = { sagar: { email: 0, linkedin: 0 }, arjun: { email: 0, linkedin: 0 } };
+  let unassigned = 0;
+  for (const r of data.rows) {
+    if (!tot[r.owner]) { unassigned += r.n; continue; }
+    const d = (byDay[r.day] ||= { sagar: { email: 0, linkedin: 0 }, arjun: { email: 0, linkedin: 0 } });
+    d[r.owner][r.channel] += r.n;
+    tot[r.owner][r.channel] += r.n;
+  }
+  const days = Object.keys(byDay).sort().reverse();
+  const num = (n) => (n ? `<b>${n}</b>` : '<span class="muted">0</span>');
+  const card = ([o, name]) => `
+    <div class="dash-card kpi">
+      <div class="dash-label" style="font-size:16px;font-weight:700">${name}</div>
+      <div class="dash-two">
+        <div><div class="dash-num">${tot[o].email}</div><div class="dash-foot">Email bheje</div></div>
+        <div><div class="dash-num">${tot[o].linkedin}</div><div class="dash-foot">LinkedIn bheje</div></div>
+      </div>
+    </div>`;
+  const row = (d) => `<tr><td class="who"><b>${prettyDate(d)}</b>${d === data.today ? ' <small class="muted">aaj</small>' : ''}</td>${PEOPLE.map(([o]) => `<td class="num">${num(byDay[d][o].email)}</td><td class="num">${num(byDay[d][o].linkedin)}</td>`).join('')}</tr>`;
+  view.innerHTML = `
+    <div class="dash-top"><h2>Dashboard</h2><p class="muted" style="margin:0">Ab tak kisne kitne Email aur LinkedIn bheje (saare segments milakar).</p></div>
+    <div class="dash-grid two">${PEOPLE.map(card).join('')}</div>
+    <div class="card"><h3 style="margin-top:0">Date ke hisaab se</h3>
+      ${days.length ? `<div class="grid-wrap"><table class="grid dash-table"><thead>
+        <tr><th rowspan="2">Date</th><th class="num grp" colspan="2">Sagar</th><th class="num grp" colspan="2">Arjun</th></tr>
+        <tr><th class="num">Email</th><th class="num">LinkedIn</th><th class="num">Email</th><th class="num">LinkedIn</th></tr></thead>
+        <tbody>${days.map(row).join('')}
+        <tr class="total"><td>Total</td>${PEOPLE.map(([o]) => `<td class="num">${tot[o].email}</td><td class="num">${tot[o].linkedin}</td>`).join('')}</tr></tbody></table></div>` : '<div class="card-done">Abhi tak koi message nahi bheja gaya</div>'}
+      ${unassigned ? `<p class="muted" style="margin:10px 0 0">Note: ${unassigned} messages un colleges/companies ke hain jinka owner set nahi hai, wo upar nahi gine gaye.</p>` : ''}
+    </div>`;
 }
 
 // ---------- HISTORY: every organisation reached out to, even after it is deleted from "Poora ho gaya" ----------

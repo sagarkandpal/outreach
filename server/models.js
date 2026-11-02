@@ -147,12 +147,23 @@ const historySchema = new mongoose.Schema(
 );
 historySchema.index({ segment: 1, key: 1 }, { unique: true });
 
+// messages sent by contacts that were later deleted, counted per day so the Dashboard totals never shrink
+const sentArchiveSchema = new mongoose.Schema({
+  day: { type: String, required: true }, // YYYY-MM-DD (server local)
+  segment: { type: String, required: true },
+  owner: { type: String, default: '' },
+  channel: { type: String, enum: ['email', 'linkedin'], required: true },
+  n: { type: Number, default: 0 },
+});
+sentArchiveSchema.index({ day: 1, segment: 1, owner: 1, channel: 1 }, { unique: true });
+
 module.exports = {
   settingsKey,
   PROTECTED_SEGMENTS,
   DEFAULT_SEGMENT_SLUGS: DEFAULT_SEGMENTS.map((s) => s.slug),
   Removed,
   History: mongoose.model('History', historySchema),
+  SentArchive: mongoose.model('SentArchive', sentArchiveSchema),
   Settings,
   Segment,
   getSettings,

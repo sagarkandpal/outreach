@@ -257,3 +257,15 @@ main:has(.side-layout) { max-width: none; margin: 0; }
 .popup .pop-icon.warn { background: var(--amber-bg); color: var(--amber); }
 .popup ul { margin: 10px 0; padding-left: 18px; font-size: 13.5px; }
 .popup .pop-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+
+/* Dashboard tab: date-wise sent figures */
+.dash-top { margin-bottom: 14px; }
+.dash-top h2 { margin-bottom: 4px; font-size: 22px; }
+.dash-grid.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.dash-card.kpi { background: var(--surface); border-color: var(--line); box-shadow: var(--shadow-sm); }
+.dash-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dash-table th.num, .dash-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.dash-table th.grp { text-align: center; border-bottom: 1px solid var(--line); }
+.dash-table td.num { font-size: 15px; }
+.dash-table tr.total td { font-weight: 700; background: var(--surface-2); border-top: 2px solid var(--line-strong); }
+@media (max-width: 520px) { .dash-grid.two { grid-template-columns: 1fr; } }
