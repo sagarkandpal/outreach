@@ -1,4 +1,4 @@
-const { hasPlaceholder } = require('./demo');
+const { hasPlaceholder, pickDraft } = require('./demo');
 
 const TITLES = new Set(['dr', 'prof', 'mr', 'mrs', 'ms', 'shri', 'smt']);
 
@@ -32,7 +32,7 @@ function classifyEmailItems(emailItems, steps) {
   const skipped = [];
   const ready = [];
   for (const t of emailItems) {
-    const draft = (steps[t.stepIndex] && steps[t.stepIndex].draft || '').trim();
+    const draft = pickDraft(steps[t.stepIndex] && steps[t.stepIndex].draft, t.noDemo).trim();
     if (!t.email) skipped.push(`${t.college} / ${t.name || t.role}: email nahi hai`);
     else if (!draft) skipped.push(`${t.college} / ${t.name || t.role}: "${t.stepLabel}" ka draft Settings mein nahi hai`);
     else if (hasPlaceholder(draft) && !t.demoLink) skipped.push(`${t.college} / ${t.name || t.role}: demo link nahi ban paya (${t.demoError || 'website nahi hai'})`);
@@ -61,18 +61,22 @@ function buildEmailPrompt(items, steps, senderName, unit = 'College') {
   const hasAttach = usedSteps.some((i) => attachOf(i));
   const signerOf = (t) => (SIGNATURES[t.owner] ? t.owner : '');
   const signers = [...new Set(ready.map(signerOf).filter(Boolean))];
+  // no demo possible for that organisation: the step's {{if_no_demo}} version, shown as its own Step so Claude picks the right block
+  const nd = (t) => !!t.noDemo && pickDraft(steps[t.stepIndex].draft, true) !== pickDraft(steps[t.stepIndex].draft, false);
+  const stepName = (i, noDemo) => `${steps[i].label}${noDemo ? ' (no demo)' : ''}`;
+  const draftOf = (t) => pickDraft(steps[t.stepIndex].draft, nd(t));
   // owner's sign-off replaces the draft's own closing + {sender_name}; no owner = draft stays as written
   const signed = applySignature;
   const blocks = [];
-  for (const t of ready) if (!blocks.some((b) => b.i === t.stepIndex && b.o === signerOf(t))) blocks.push({ i: t.stepIndex, o: signerOf(t) });
-  blocks.sort((a, b) => a.i - b.i || a.o.localeCompare(b.o));
-  const drafts = blocks.map(({ i, o }) => `### ${steps[i].label}${signers.length ? `  [Signer: ${o || '-'}]` : ''}  [Mode: ${modeOf(i)}]\n<<<DRAFT\n${signed(steps[i].draft.trim(), o).replace(/\{sender_name\}/g, () => sender).replace(/\{attachment_link\}/gi, () => `[${linkText(i)}](${urlOf(i)})`)}\nDRAFT>>>`).join('\n\n');
+  for (const t of ready) if (!blocks.some((b) => b.i === t.stepIndex && b.o === signerOf(t) && b.n === nd(t))) blocks.push({ i: t.stepIndex, o: signerOf(t), n: nd(t) });
+  blocks.sort((a, b) => a.i - b.i || Number(a.n) - Number(b.n) || a.o.localeCompare(b.o));
+  const drafts = blocks.map(({ i, o, n }) => `### ${stepName(i, n)}${signers.length ? `  [Signer: ${o || '-'}]` : ''}  [Mode: ${modeOf(i)}]\n<<<DRAFT\n${signed(pickDraft(steps[i].draft, n).trim(), o).replace(/\{sender_name\}/g, () => sender).replace(/\{attachment_link\}/gi, () => `[${linkText(i)}](${urlOf(i)})`)}\nDRAFT>>>`).join('\n\n');
   // per-recipient demo link, only for steps whose draft uses {demo_link}
-  const anyDemo = ready.some((t) => hasPlaceholder(steps[t.stepIndex].draft));
+  const anyDemo = ready.some((t) => hasPlaceholder(draftOf(t)));
   // per-recipient website, only for steps whose draft uses {college_website}
-  const anyWeb = ready.some((t) => /\{college_website\}/i.test(steps[t.stepIndex].draft));
+  const anyWeb = ready.some((t) => /\{college_website\}/i.test(draftOf(t)));
   const cell = (s) => String(s).replace(/\s*[|\r\n]+\s*/g, ' ');
-  const rows = ready.map((t, n) => `${n + 1} | ${cell(t.college.replace('[DEMO] ', ''))} | ${cell(firstName(t.name))} | ${t.email} | ${t.stepLabel} | ${modeOf(t.stepIndex)}${signers.length ? ` | ${signerOf(t) || '-'}` : ''}${anyDemo ? ` | ${t.demoLink || '-'}` : ''}${anyWeb ? ` | ${t.website || '-'}` : ''}`).join('\n');
+  const rows = ready.map((t, n) => `${n + 1} | ${cell(t.college.replace('[DEMO] ', ''))} | ${cell(firstName(t.name))} | ${t.email} | ${stepName(t.stepIndex, nd(t))} | ${modeOf(t.stepIndex)}${signers.length ? ` | ${signerOf(t) || '-'}` : ''}${anyDemo ? ` | ${t.demoLink || '-'}` : ''}${anyWeb ? ` | ${t.website || '-'}` : ''}`).join('\n');
   const sigRule = signers.length ? '\n- Drafts mein sign-off pehle se laga hua hai (owner ke hisaab se). Har recipient ke liye wo Draft block lo jiska Step aur Signer uski Recipients row se match kare; "[LinkedIn](url)" clickable hyperlink bane (text sirf "LinkedIn"). Sign-off mat badalna.' : '';
   const senderRule = sender && !signers.length ? `\n- Draft mein sender (mera) naam "${sender}" hi rehna chahiye; use badalna mat.` : '';
   const draftRules = `

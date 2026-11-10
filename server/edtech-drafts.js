@@ -83,6 +83,25 @@ I'd be curious to know how you find the experience.
 
 Best regards,
 {sender_name}
+PanScience Innovations | Botza AI
+{{if_no_demo}}
+Subject: Can your website answer students when your team can't?
+
+Hi {first_name},
+
+I've shared how Botza works, but it's easier to judge when you see it answer real questions.
+
+In a short call, I can show you how Botza responds to questions a student might ask, such as:
+- What are the eligibility criteria?
+- Do you offer weekend batches?
+- What is included in the course?
+
+There's nothing to set up on your side, and it takes about 15 minutes.
+
+Would you be open to a quick walkthrough for {company}? Happy to work around your schedule.
+
+Best regards,
+{sender_name}
 PanScience Innovations | Botza AI`,
   },
   {

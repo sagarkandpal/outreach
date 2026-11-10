@@ -3,7 +3,7 @@ const { College, Contact, Segment, History, SentArchive, Settings, Removed, sett
 const { decorate } = require('./due');
 const { buildEmailPrompt, classifyEmailItems, firstName } = require('./prompt');
 const gmail = require('./gmail');
-const { splitNoDemo, hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink } = require('./demo');
+const { splitNoDemo, pickDraft, hasPlaceholder, fillDemoLink, normalizeWebsite, ensureDemoLink } = require('./demo');
 
 const router = express.Router();
 
@@ -422,14 +422,18 @@ async function emailTasksFor(req, settings, { college, step, owner }) {
   const stepFilter = step === undefined || step === null || step === '' ? null : Number(step);
   const items = (await buildToday(req, settings)).filter((i) => (!college || i.college === college) && ownerOk(i) && (stepFilter === null || i.stepIndex === stepFilter));
   // demo links for recipients whose step draft uses the placeholder (generated once per organisation, then cached)
-  const demoLinks = {}, demoErrors = {}, demoFailed = new Set();
+  const demoLinks = {}, demoErrors = {}, demoFailed = new Set(), noDemo = new Set();
   for (const t of items) {
     const key = String(t.collegeId);
     if (t.channel !== 'email' || !hasPlaceholder(settings.emailSteps[t.stepIndex] && settings.emailSteps[t.stepIndex].draft) || key in demoLinks || key in demoErrors) continue;
-    const r = await ensureDemoLink(await College.findById(t.collegeId));
+    const col = await College.findById(t.collegeId);
+    const r = await ensureDemoLink(col);
     if (r.url) demoLinks[key] = r.url; else { demoErrors[key] = r.error; if (r.failed) demoFailed.add(t.college); }
+    // demo can never be made (site cannot show Botza, or no website): the step's {{if_no_demo}} version goes instead.
+    // a temporary service problem is not this; that email waits for the next try
+    if (!r.url && (r.failed || !normalizeWebsite(col.website))) noDemo.add(key);
   }
-  for (const t of items) { t.demoLink = demoLinks[String(t.collegeId)] || ''; t.demoError = demoErrors[String(t.collegeId)] || ''; }
+  for (const t of items) { t.demoLink = demoLinks[String(t.collegeId)] || ''; t.demoError = demoErrors[String(t.collegeId)] || ''; t.noDemo = noDemo.has(String(t.collegeId)); }
   return { items, demoFailed: [...demoFailed] };
 }
 
@@ -461,7 +465,8 @@ router.post('/drafts/emails', wrap(async (req, res) => {
       const d = await gmail.createDraft(t.owner, { to: t.email, subject: msg.subject, body: msg.body });
       await Contact.updateOne({ _id: t.contactId }, { draftedStep: t.stepIndex, draftedAt: new Date() });
       const attach = !String(step.attachmentUrl || '').trim() ? String(step.attachment || '').trim() : '';
-      created.push({ college: t.college.replace('[DEMO] ', ''), name: t.name || t.role, email: t.email, step: t.stepLabel, owner: t.owner, link: d.link, attach });
+      const noDemoUsed = t.noDemo && pickDraft(step.draft, true) !== pickDraft(step.draft, false);
+      created.push({ college: t.college.replace('[DEMO] ', ''), name: t.name || t.role, email: t.email, step: t.stepLabel + (noDemoUsed ? ' (no demo)' : ''), owner: t.owner, link: d.link, attach });
     } catch (e) { failed.push(`${who(t)}: ${e.message}`); }
   }
   res.json({ created, skipped, failed, demoFailed });

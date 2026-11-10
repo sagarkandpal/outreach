@@ -3,7 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const { applySignature, firstName, SIGNATURES } = require('./prompt');
-const { fillDemoLink } = require('./demo');
+const { fillDemoLink, pickDraft } = require('./demo');
 
 // Gmail DRAFTS only: the app creates drafts in the owner's Gmail, the owner sends them by hand.
 // gmail.compose is the narrowest scope Google offers for drafts; the code below only ever calls drafts.create.
@@ -72,7 +72,7 @@ function renderEmail(t, step) {
   const college = t.college.replace('[DEMO] ', '');
   const url = String(step.attachmentUrl || '').trim();
   const linkText = String(step.attachment || '').trim().replace(/[[\]\r\n|]+/g, ' ') || 'Attachment';
-  let text = applySignature(String(step.draft || '').trim(), t.owner)
+  let text = applySignature(pickDraft(step.draft, t.noDemo).trim(), t.owner)
     .replace(/\{sender_name\}/g, () => (SIGNATURES[t.owner] || {}).name || '')
     .replace(/\{first_name\}/g, () => firstName(t.name))
     .replace(/\{(?:college|company)\}/g, () => college)

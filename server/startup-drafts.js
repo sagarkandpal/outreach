@@ -65,6 +65,21 @@ Try a typical question about pricing, product fit, or setup and see how the demo
 This is a preview, not an installation on your live website.
 
 Best,
+{sender_name}
+{{if_no_demo}}
+Subject: A quick Botza walkthrough
+
+Hi {first_name},
+
+The most useful way to judge a chatbot is to see it answer real questions.
+
+In a short call, I can show you how Botza answers typical visitor questions about pricing, product fit or setup, using only the documents you choose to provide.
+
+There's nothing to set up on your side, and it takes about 15 minutes.
+
+Would a quick walkthrough this week be useful?
+
+Best,
 {sender_name}`,
   },
   {
@@ -208,6 +223,22 @@ Try the demo: {demo_link}
 This is a sample experience, not a live deployment at {college}. The purpose is to show how your existing website information could be made accessible through a conversational interface.
 
 If the approach looks relevant, would you be open to a 15-minute discussion about the information your students ask for most often and whether Botza would be a suitable fit?
+
+Best regards,
+{sender_name}
+PanScience Innovations | Botza AI
+{{if_no_demo}}
+Subject: A quick walkthrough of Botza for {college}
+
+Hi {first_name},
+
+I've shared how Botza works in my earlier emails. The easiest way to judge whether it fits {college} is to see it in action.
+
+In a short call, I can show you how Botza answers typical student questions about courses, fees and admissions, using only the information an institution chooses to provide.
+
+There's nothing to set up on your side, and the walkthrough takes about 15 minutes.
+
+Would you be open to a short call this week or next? Happy to work around your schedule.
 
 Best regards,
 {sender_name}
