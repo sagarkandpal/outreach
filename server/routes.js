@@ -641,7 +641,9 @@ router.get('/search', wrap(async (req, res) => {
   const contacts = await segContacts(req);
   const hits = contacts.filter((c) =>
     [c.name, c.email, c.role, cname[String(c.collegeId)]].some((v) => String(v || '').toLowerCase().includes(q)) ||
-    normLink(c.linkedinUrl).includes(ql));
+    normLink(c.linkedinUrl).includes(ql) ||
+    // names saved as first name only: "aman jain" still finds linkedin.com/in/aman-jain-83785979
+    normLink(c.linkedinUrl).replace(/-/g, ' ').includes(q));
   res.json(hits.slice(0, 15).map((raw) => {
     const c = dec(req, raw, settings);
     return {

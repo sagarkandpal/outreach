@@ -103,6 +103,23 @@ function draftsPopup(r) {
   back.querySelector('[data-close]').focus();
 }
 const safeUrl =(u) => (/^https?:\/\//i.test(u) ? u : u ? 'https://' + u : '');
+// many contacts were imported with only a first name; the LinkedIn link usually has the surname (linkedin.com/in/aman-jain-83785979 -> Aman Jain)
+const MIDDLE = /^(.|singh|kumar|pratap|pal|raj|kaur|prasad|chandra|nath|lal|sundar|madhur|mohan|kant|dev)$/i;
+const NOT_SURNAME = /^(it|iit|iim|ceo|cto|founder|official|hr|ca|mba|phd|befikr|gemini|fraganote)$/i; // slug words that are a title or company, not a surname
+const liHandle = (u) => { try { const m = String(u || '').match(/linkedin\.com\/in\/([^/?#]+)/i); return m ? decodeURIComponent(m[1]) : ''; } catch { return ''; } };
+const fullName = (name, url) => {
+  const n = String(name || '').trim();
+  if (!n || /\s/.test(n)) return n;
+  const parts = liHandle(url).split('-').filter((p) => /^\p{L}+$/u.test(p));
+  if (parts.length < 2 || parts[0].toLowerCase() !== n.toLowerCase() || NOT_SURNAME.test(parts[1])) return n;
+  // a third word only after a middle name ("amit-kumar-gupta"); otherwise it is usually a company or title ("anil-ambati-managing-director")
+  return parts.slice(0, parts.length > 2 && MIDDLE.test(parts[1]) ? 3 : 2).map((p) => p[0].toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+};
+// bold full name; when the surname can't be read from the link, the LinkedIn handle tells same-name people apart
+const whoHtml = (name, url) => {
+  const full = fullName(name, url), h = liHandle(url);
+  return `<b>${esc(full || '—')}</b>${full && !/\s/.test(full) && h ? ` <small class="muted">(in/${esc(h)})</small>` : ''}`;
+};
 
 async function guard(fn) {
   try { await fn(); } catch (e) { toast(e.message); }
@@ -504,7 +521,7 @@ function renderLinkedin(data) {
   const taskRow = (t) => `
     <div class="task ${t.state}">
       <div class="task-main">
-        <div class="task-title"><b>${esc(t.name || '—')}</b> <small class="muted">${esc(t.role)} · ${esc(t.college.replace('[DEMO] ', ''))}</small>
+        <div class="task-title">${whoHtml(t.name, t.linkedinUrl)} <small class="muted">${esc(t.role)} · ${esc(t.college.replace('[DEMO] ', ''))}</small>
           <span class="step">${esc(t.stepLabel)}</span>
           ${t.state === 'overdue' ? `<span class="tag overdue">${t.daysLate} din late</span>` : `<span class="tag due">Aaj</span>`}</div>
         <div class="task-reach">${reach(t.linkedinUrl)}</div>
@@ -513,14 +530,14 @@ function renderLinkedin(data) {
       <button class="btn primary bigbtn" data-sent="${t.contactId}">${ic('check')}Bhej diya</button>
     </div>`;
   const pendRow = (p, extra) => `
-    <div class="task ${p.daysAgo >= 7 ? 'overdue' : ''}" ${extra ? 'hidden data-other' : ''} data-q="${esc((p.name + ' ' + p.role + ' ' + p.college).toLowerCase())}">
+    <div class="task ${p.daysAgo >= 7 ? 'overdue' : ''}" ${extra ? 'hidden data-other' : ''} data-q="${esc((fullName(p.name, p.linkedinUrl) + ' ' + p.role + ' ' + p.college + ' ' + liHandle(p.linkedinUrl).replace(/-/g, ' ')).toLowerCase())}">
       <label class="task-main" style="display:flex;gap:8px;align-items:center;cursor:pointer">
         <input type="checkbox" data-conn="${p.contactId}">
-        <div><div class="task-title"><b>${esc(p.name || '—')}</b> <small class="muted">${esc(p.role)} · ${esc(p.college.replace('[DEMO] ', ''))}</small>
+        <div><div class="task-title">${whoHtml(p.name, p.linkedinUrl)} <small class="muted">${esc(p.role)} · ${esc(p.college.replace('[DEMO] ', ''))}</small>
           ${extra ? '<span class="tag due">note abhi mark nahi hua</span>' : `<span class="tag ${p.daysAgo >= 7 ? 'overdue' : 'due'}">${p.daysAgo} din pehle bheja</span>`}</div>
         <div class="task-reach">${reach(p.linkedinUrl)}</div></div>
       </label>
-      ${extra ? '' : `<button class="link" data-giveup="${p.contactId}" data-who="${esc(p.name || p.role)}">Accept nahi hua, band karo</button>`}
+      ${extra ? '' : `<button class="link" data-giveup="${p.contactId}" data-who="${esc(fullName(p.name, p.linkedinUrl) || p.role)}">Accept nahi hua, band karo</button>`}
     </div>`;
   const section = (num, title, desc, rows, count) => `<div class="card li-sec"><div class="li-head"><span class="li-num">${num}</span><div><h2>${title} <span class="badge ${count ? '' : 'grey'}">${count}</span></h2><p>${desc}</p></div></div><div class="li-body">${rows}</div></div>`;
   view.innerHTML = `
@@ -1129,13 +1146,13 @@ async function renderSettings() {
     if (!hits.length) { box.innerHTML = '<div class="res-empty">Kuch nahi mila. Email/naam check karo ya contact add karo.</div>'; return; }
     box.innerHTML = hits.map((h) => `
       <div class="res">
-        <div class="res-top"><b>${esc(h.college)}</b> · ${esc(h.name || '—')} <span class="role">${esc(h.role)}</span>
+        <div class="res-top"><b>${esc(h.college)}</b> · ${esc(fullName(h.name, h.linkedinUrl) || '—')} <span class="role">${esc(h.role)}</span>
           ${h.status !== 'active' ? '<span class="tag due">Reply aaya / tumhare paas</span>' : ''}</div>
-        <div class="res-line">${esc(h.email)} ${h.linkedinUrl ? `· <a href="${esc(safeUrl(h.linkedinUrl))}" target="_blank" rel="noopener">LinkedIn ↗</a>` : ''}</div>
+        <div class="res-line">${esc(h.email)} ${h.linkedinUrl ? `· <a href="${esc(safeUrl(h.linkedinUrl))}" target="_blank" rel="noopener">${liHandle(h.linkedinUrl) ? 'in/' + esc(liHandle(h.linkedinUrl)) : 'LinkedIn'} ↗</a>` : ''}</div>
         <div class="res-line">📧 ${esc(h.emailSummary)}<br>💼 ${esc(h.linkedinSummary)}</div>
         ${h.replyNote ? `<div class="res-line muted">Note: ${esc(h.replyNote)}</div>` : ''}
         <div class="res-actions">${h.status === 'active'
-          ? `<button class="btn primary small" data-sreply="${h._id}" data-who="${esc(h.name || h.role)}">Reply aaya — follow-ups band karo</button>`
+          ? `<button class="btn primary small" data-sreply="${h._id}" data-who="${esc(fullName(h.name, h.linkedinUrl) || h.role)}">Reply aaya — follow-ups band karo</button>`
           : `<button class="btn small" data-sresume="${h._id}">Follow-ups phir se chalu karo</button>`}</div>
       </div>`).join('');
     box.querySelectorAll('[data-sreply]').forEach((b) => b.onclick = () => guard(async () => {
