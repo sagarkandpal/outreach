@@ -121,6 +121,21 @@ const whoHtml = (name, url) => {
   return `<b>${esc(full || '—')}</b>${full && !/\s/.test(full) && h ? ` <small class="muted">(in/${esc(h)})</small>` : ''}`;
 };
 
+// LinkedIn connections list pasted by the user -> which pending contacts accepted. Names are matched as whole words
+// (titles / punctuation / accents ignored), only when we know a surname, so a lone first name never ticks anyone
+const normName = (s) => String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  .replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\b(dr|prof|mr|mrs|ms|er)\b/g, ' ').replace(/\s+/g, ' ').trim();
+function connMatcher(text) {
+  const lines = ' ' + String(text || '').split(/\r?\n/).map(normName).filter(Boolean).join(' | ') + ' ';
+  const handles = new Set([...String(text || '').matchAll(/linkedin\.com\/in\/([^/?#\s"'<>]+)/gi)].map((m) => { try { return decodeURIComponent(m[1]).toLowerCase(); } catch { return m[1].toLowerCase(); } }));
+  return (name, url) => {
+    const h = liHandle(url).toLowerCase();
+    if (h && handles.has(h)) return true;
+    const n = normName(fullName(name, url));
+    return n.includes(' ') && lines.includes(` ${n} `);
+  };
+}
+
 async function guard(fn) {
   try { await fn(); } catch (e) { toast(e.message); }
 }
@@ -513,6 +528,9 @@ async function renderTodayTab(reuse) {
   await drawOwnerDash();
 }
 
+// pasted connections list, kept per person (Arjun / Sagar have their own LinkedIn) and shared by every segment
+const connListKey = () => `liConnList:${todayOwner}`;
+const savedConnList = () => lsGet(connListKey());
 function renderLinkedin(data) {
   const { notes, followups, pending, others } = data;
   const n = notes.filter(ownerMatch), f = followups.filter(ownerMatch);
@@ -532,7 +550,7 @@ function renderLinkedin(data) {
   const pendRow = (p, extra) => `
     <div class="task ${p.daysAgo >= 7 ? 'overdue' : ''}" ${extra ? 'hidden data-other' : ''} data-q="${esc((fullName(p.name, p.linkedinUrl) + ' ' + p.role + ' ' + p.college + ' ' + liHandle(p.linkedinUrl).replace(/-/g, ' ')).toLowerCase())}">
       <label class="task-main" style="display:flex;gap:8px;align-items:center;cursor:pointer">
-        <input type="checkbox" data-conn="${p.contactId}">
+        <input type="checkbox" data-conn="${p.contactId}" data-name="${esc(p.name)}" data-url="${esc(p.linkedinUrl || '')}">
         <div><div class="task-title">${whoHtml(p.name, p.linkedinUrl)} <small class="muted">${esc(p.role)} · ${esc(p.college.replace('[DEMO] ', ''))}</small>
           ${extra ? '<span class="tag due">note abhi mark nahi hua</span>' : `<span class="tag ${p.daysAgo >= 7 ? 'overdue' : 'due'}">${p.daysAgo} din pehle bheja</span>`}</div>
         <div class="task-reach">${reach(p.linkedinUrl)}</div></div>
@@ -545,7 +563,10 @@ function renderLinkedin(data) {
     <div class="stats"><div class="filter">Aapka naam (message me lagega): <input id="liSender" placeholder="Sender naam" value="${esc(savedSender())}" style="width:130px"></div></div>
     ${section(1, 'Connection Note bhejo', 'Naye logo ko LinkedIn par connection request aur note bhejo. Bhej diya dabate hi wo Step 2 me chale jate hain.', n.length ? n.map(taskRow).join('') : '<div class="card-done">Koi naya note pending nahi</div>', n.length)}
     ${section(2, 'Kisne accept kiya? Connected tick karo', 'Jinko note bheja unme se jo accept kare, search karke ya tick karke Connected mark karo. Mark karte hi unka follow-up Step 3 me aa jayega.',
-      `<div style="margin:6px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="pendSearch" type="search" placeholder="Naam ya ${esc(seg.unit.toLowerCase())} dhundo..." autocomplete="off" style="min-width:220px"><button class="btn primary small" id="bulkConn">${ic('check')}Selected ko Connected mark karo</button></div>
+      `<div style="margin:6px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input id="pendSearch" type="search" placeholder="Naam ya ${esc(seg.unit.toLowerCase())} dhundo..." autocomplete="off" style="min-width:220px"><button class="btn primary small" id="bulkConn">${ic('check')}Selected ko Connected mark karo</button><button class="btn small" id="autoConn">${ic('linkedin')}LinkedIn list se auto Connected</button></div>
+      <details id="connPaste" ${savedConnList() ? '' : 'open'} style="margin:4px 0 10px"><summary style="cursor:pointer;font-weight:600">LinkedIn connections list ${savedConnList() ? '(saved hai, nayi paste karni ho to kholo)' : 'paste karo'}</summary>
+        <div class="help" style="margin:8px 0">LinkedIn par <a href="https://www.linkedin.com/mynetwork/invite-connect/connections/" target="_blank" rel="noopener">My Network → Connections ${ic('ext')}</a> kholo (naye accept sabse upar hote hain), <b>Ctrl+A</b> → <b>Ctrl+C</b>, yahan paste karo aur <b>LinkedIn list se auto Connected</b> dabao. List ${esc(OWNERS[todayOwner] || 'is tab')} ke liye save rehti hai, to dusre segment me jaake sirf button dabana hai.</div>
+        <textarea id="connText" rows="4" style="width:100%" placeholder="Connections page ka text yahan paste karo">${esc(savedConnList())}</textarea></details>
       ${pend.length ? pend.map((p) => pendRow(p)).join('') : '<div class="card-done" id="noPend">Koi pending connection nahi, upar search karke kisi ko bhi Connected mark kar sakte ho</div>'}
       ${oth.map((p) => pendRow(p, true)).join('')}`, pend.length)}
     ${section(3, 'Follow-up message bhejo', 'Sirf connected logo ke liye. Copy + Profile dabao, message paste karke bhejo, phir Bhej diya dabao.', f.length ? f.map(taskRow).join('') : '<div class="card-done">Koi follow-up pending nahi</div>', f.length)}`;
@@ -583,6 +604,20 @@ function renderLinkedin(data) {
     if (!ids.length) return toast('Pehle koi select karo');
     await api('POST', '/contacts/connected-bulk', { ids });
     toast(`${ids.length} connected ✓`); render();
+  });
+  const auto = document.getElementById('autoConn');
+  if (auto) auto.onclick = () => guard(async () => {
+    const text = document.getElementById('connText').value.trim();
+    if (!text) { document.getElementById('connPaste').open = true; return toast('Pehle LinkedIn connections list paste karo'); }
+    lsSet(connListKey(), text);
+    const accepted = connMatcher(text);
+    const hits = [...view.querySelectorAll('[data-conn]')].filter((x) => accepted(x.dataset.name, x.dataset.url));
+    if (!hits.length) return toast(`Is ${seg.name} list me kisi ne accept nahi kiya (list me koi naam nahi mila)`);
+    hits.forEach((x) => { x.checked = true; x.closest('[data-q]').hidden = false; });
+    const names = hits.map((x) => fullName(x.dataset.name, x.dataset.url) || x.dataset.name);
+    if (!confirm(`${seg.name}: ${hits.length} log LinkedIn list me mile, inhe Connected mark karun?\n\n${names.slice(0, 20).join('\n')}${names.length > 20 ? `\n...aur ${names.length - 20}` : ''}`)) return toast('Tick kar diye, check karke "Selected ko Connected mark karo" dabao');
+    await api('POST', '/contacts/connected-bulk', { ids: hits.map((x) => x.dataset.conn) });
+    toast(`${seg.name}: ${hits.length} ne accept kiya, Connected ✓`); render();
   });
   view.querySelectorAll('[data-giveup]').forEach((b) => b.onclick = () => guard(async () => {
     if (!confirm(`${b.dataset.who} ke follow-ups band karun?`)) return;
