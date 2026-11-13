@@ -124,7 +124,7 @@ const whoHtml = (name, url) => {
 // LinkedIn connections list pasted by the user -> which pending contacts accepted. Names are matched as whole words
 // (titles / punctuation / accents ignored), only when we know a surname, so a lone first name never ticks anyone
 const normName = (s) => String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  .replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\b(dr|prof|mr|mrs|ms|er)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  .replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\b(dr|prof|mr|mrs|ms|er|\p{L})\b/gu, ' ').replace(/\s+/g, ' ').trim(); // single letters too: "Vipin K. Shakya" = "Vipin Shakya"
 function connMatcher(text) {
   const lines = ' ' + String(text || '').split(/\r?\n/).map(normName).filter(Boolean).join(' | ') + ' ';
   const handles = new Set([...String(text || '').matchAll(/linkedin\.com\/in\/([^/?#\s"'<>]+)/gi)].map((m) => { try { return decodeURIComponent(m[1]).toLowerCase(); } catch { return m[1].toLowerCase(); } }));
