@@ -121,18 +121,19 @@ const whoHtml = (name, url) => {
   return `<b>${esc(full || '—')}</b>${full && !/\s/.test(full) && h ? ` <small class="muted">(in/${esc(h)})</small>` : ''}`;
 };
 
-// LinkedIn connections list pasted by the user -> which pending contacts accepted. Names are matched as whole words
-// (titles / punctuation / accents ignored), only when we know a surname, so a lone first name never ticks anyone
+// LinkedIn connections list pasted by the user -> which pending contacts accepted. A name must be a whole line of the paste
+// (titles / initials / punctuation / accents ignored, so "Amit Kumar" never matches "Amit Kumar Gupta"), and only when
+// we know a surname, so a lone first name never ticks anyone
 const normName = (s) => String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   .replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\b(dr|prof|mr|mrs|ms|er|\p{L})\b/gu, ' ').replace(/\s+/g, ' ').trim(); // single letters too: "Vipin K. Shakya" = "Vipin Shakya"
 function connMatcher(text) {
-  const lines = ' ' + String(text || '').split(/\r?\n/).map(normName).filter(Boolean).join(' | ') + ' ';
+  const lines = new Set(String(text || '').split(/\r?\n/).map(normName).filter(Boolean));
   const handles = new Set([...String(text || '').matchAll(/linkedin\.com\/in\/([^/?#\s"'<>]+)/gi)].map((m) => { try { return decodeURIComponent(m[1]).toLowerCase(); } catch { return m[1].toLowerCase(); } }));
   return (name, url) => {
     const h = liHandle(url).toLowerCase();
     if (h && handles.has(h)) return true;
     const n = normName(fullName(name, url));
-    return n.includes(' ') && lines.includes(` ${n} `);
+    return n.includes(' ') && lines.has(n);
   };
 }
 
@@ -307,7 +308,7 @@ async function renderToday() {
                     ? (t.email ? `${esc(t.email)} <button class="link" data-copy="${esc(t.email)}">Copy</button>` : '<span class="muted">email nahi hai</span>')
                     : (t.linkedinUrl ? `<a href="${esc(safeUrl(t.linkedinUrl))}" target="_blank" rel="noopener">LinkedIn profile kholo ${ic('ext')}</a>` : '<span class="muted">link nahi hai</span>')}</div>
                 </div>
-                <button class="btn primary bigbtn" data-sent="${t.contactId}" data-ch="${t.channel}">${ic('check')}Bhej diya</button>
+                <button class="btn primary bigbtn" data-sent="${t.contactId}" data-ch="${t.channel}" data-step="${t.stepIndex}">${ic('check')}Bhej diya</button>
               </div>`).join('')}
           </div>`).join('')}
         </div>
@@ -315,17 +316,23 @@ async function renderToday() {
 
     box.querySelectorAll('[data-sent]').forEach((b) => b.onclick = () => guard(async () => {
       b.disabled = true;
-      try { await api('POST', `/contacts/${b.dataset.sent}/sent`, { channel: b.dataset.ch }); } catch (e) { b.disabled = false; throw e; }
+      try { await api('POST', `/contacts/${b.dataset.sent}/sent`, { channel: b.dataset.ch, step: Number(b.dataset.step) }); } catch (e) { b.disabled = false; throw e; }
       toast('Done'); afterSent([{ contactId: b.dataset.sent, channel: b.dataset.ch }]);
     }));
     box.querySelectorAll('[data-sentall]').forEach((b) => b.onclick = () => guard(async () => {
-      const tasks = list.filter((t) => t.college === b.dataset.sentall);
+      // from the live items: rows already marked one by one are gone, so they are not sent again
+      const tasks = items.filter((t) => t.college === b.dataset.sentall && (!ch || t.channel === ch) && ownerMatch(t) && stepMatch(t));
+      if (!tasks.length) return toast('Is card me kuch baaki nahi');
       if (!confirm(`${tasks.length} tasks "Bhej diya" mark karun?`)) return;
       b.disabled = true;
       const ok = [];
-      try { for (const t of tasks) { await api('POST', `/contacts/${t.contactId}/sent`, { channel: t.channel }); ok.push(t); } }
-      finally { b.disabled = false; if (ok.length) afterSent(ok); }
-      toast(`${ok.length} tasks done`);
+      let failed = 0;
+      try {
+        for (const t of tasks) {
+          try { await api('POST', `/contacts/${t.contactId}/sent`, { channel: t.channel, step: t.stepIndex }); ok.push(t); } catch { failed++; }
+        }
+      } finally { b.disabled = false; if (ok.length) afterSent(ok); }
+      toast(failed ? `${ok.length} done, ${failed} nahi hue (pehle se mark ya error), page refresh karo` : `${ok.length} tasks done`);
     }));
     box.querySelectorAll('[data-reply]').forEach((b) => b.onclick = () => guard(async () => {
       const note = prompt(`${b.dataset.who} ka reply aaya. Note likho (optional):`, '');
@@ -433,7 +440,7 @@ async function renderToday() {
     try {
       for (let n = 0; n < tasks.length; n += 5) {
         const batch = tasks.slice(n, n + 5);
-        const res = await Promise.allSettled(batch.map((t) => api('POST', `/contacts/${t.contactId}/sent`, { channel: t.channel })));
+        const res = await Promise.allSettled(batch.map((t) => api('POST', `/contacts/${t.contactId}/sent`, { channel: t.channel, step: t.stepIndex })));
         res.forEach((r, k) => { if (r.status === 'fulfilled') ok.push(batch[k]); });
       }
     } finally { btn.disabled = false; if (ok.length) afterSent(ok); }
@@ -544,8 +551,8 @@ function renderLinkedin(data) {
           ${t.state === 'overdue' ? `<span class="tag overdue">${t.daysLate} din late</span>` : `<span class="tag due">Aaj</span>`}</div>
         <div class="task-reach">${reach(t.linkedinUrl)}</div>
       </div>
-      <button class="btn small" data-copyopen="${t.contactId}" data-kind="${t.isFirst ? 'notes' : 'followups'}">${ic('copy')}Copy + Profile</button>
-      <button class="btn primary bigbtn" data-sent="${t.contactId}">${ic('check')}Bhej diya</button>
+      <button class="btn small" data-copyopen="${t.contactId}" data-kind="${t.isFirst ? 'notes' : 'followups'}">${ic('copy')}Copy message</button>
+      <button class="btn primary bigbtn" data-sent="${t.contactId}" data-step="${t.stepIndex}">${ic('check')}Bhej diya</button>
     </div>`;
   const pendRow = (p, extra) => `
     <div class="task ${p.daysAgo >= 7 ? 'overdue' : ''}" ${extra ? 'hidden data-other' : ''} data-q="${esc((fullName(p.name, p.linkedinUrl) + ' ' + p.role + ' ' + p.college + ' ' + liHandle(p.linkedinUrl).replace(/-/g, ' ')).toLowerCase())}">
@@ -569,7 +576,7 @@ function renderLinkedin(data) {
         <textarea id="connText" rows="4" style="width:100%" placeholder="Connections page ka text yahan paste karo">${esc(savedConnList())}</textarea></details>
       ${pend.length ? pend.map((p) => pendRow(p)).join('') : '<div class="card-done" id="noPend">Koi pending connection nahi, upar search karke kisi ko bhi Connected mark kar sakte ho</div>'}
       ${oth.map((p) => pendRow(p, true)).join('')}`, pend.length)}
-    ${section(3, 'Follow-up message bhejo', 'Sirf connected logo ke liye. Copy + Profile dabao, message paste karke bhejo, phir Bhej diya dabao.', f.length ? f.map(taskRow).join('') : '<div class="card-done">Koi follow-up pending nahi</div>', f.length)}`;
+    ${section(3, 'Follow-up message bhejo', 'Sirf connected logo ke liye. Copy message dabao, LinkedIn par message paste karke bhejo, phir Bhej diya dabao.', f.length ? f.map(taskRow).join('') : '<div class="card-done">Koi follow-up pending nahi</div>', f.length)}`;
 
   drawOwnerButtons(notes.concat(followups).some((i) => !i.owner));
 
@@ -577,17 +584,16 @@ function renderLinkedin(data) {
     const t = (b.dataset.kind === 'notes' ? notes : followups).find((x) => x.contactId === b.dataset.copyopen);
     const senderName = document.getElementById('liSender').value.trim();
     if (!t) return;
-    if (!t.message) { if (t.linkedinUrl) window.open(safeUrl(t.linkedinUrl), '_blank', 'noopener'); return toast('Is step ka draft nahi hai (Settings me likho), profile khol diya'); }
+    if (!t.message) return toast('Is step ka draft nahi hai (Settings me likho)');
     if (!(await fillDemo(t))) return;
     if (!senderName && /\{sender_name\}/.test(t.message)) return toast('Pehle sender naam likho');
     lsSet('senderName', senderName);
     navigator.clipboard.writeText(t.message.replace(/\{sender_name\}/g, () => senderName));
-    if (t.linkedinUrl) window.open(safeUrl(t.linkedinUrl), '_blank', 'noopener');
     toast(`${t.stepLabel} copied ✓`);
   }));
   view.querySelectorAll('[data-sent]').forEach((b) => b.onclick = () => guard(async () => {
     b.disabled = true;
-    try { await api('POST', `/contacts/${b.dataset.sent}/sent`, { channel: 'linkedin' }); } catch (e) { b.disabled = false; throw e; }
+    try { await api('POST', `/contacts/${b.dataset.sent}/sent`, { channel: 'linkedin', step: Number(b.dataset.step) }); } catch (e) { b.disabled = false; throw e; }
     toast('Done'); render();
   }));
   const ps = document.getElementById('pendSearch');
@@ -611,7 +617,8 @@ function renderLinkedin(data) {
     if (!text) { document.getElementById('connPaste').open = true; return toast('Pehle LinkedIn connections list paste karo'); }
     lsSet(connListKey(), text);
     const accepted = connMatcher(text);
-    const hits = [...view.querySelectorAll('[data-conn]')].filter((x) => accepted(x.dataset.name, x.dataset.url));
+    // only people whose note is marked sent; the hidden "note abhi mark nahi hua" rows are for manual search
+    const hits = [...view.querySelectorAll('[data-q]:not([data-other]) [data-conn]')].filter((x) => accepted(x.dataset.name, x.dataset.url));
     if (!hits.length) return toast(`Is ${seg.name} list me kisi ne accept nahi kiya (list me koi naam nahi mila)`);
     hits.forEach((x) => { x.checked = true; x.closest('[data-q]').hidden = false; });
     const names = hits.map((x) => fullName(x.dataset.name, x.dataset.url) || x.dataset.name);
@@ -836,11 +843,10 @@ async function renderColleges() {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) return toast('Date format YYYY-MM-DD');
         await api('PATCH', `/contacts/${c}/sent`, { channel: ch, index: idx, date: v.trim() });
       }
-    } else if (s === 'wait') {
-      if (!confirm('Abhi due nahi hai. Phir bhi "sent" mark karun?')) return;
-      await api('POST', `/contacts/${c}/sent`, { channel: ch });
     } else {
-      await api('POST', `/contacts/${c}/sent`, { channel: ch });
+      if (s === 'wait' && !confirm('Abhi due nahi hai. Phir bhi "sent" mark karun?')) return;
+      b.disabled = true; // a double click must not record two steps
+      try { await api('POST', `/contacts/${c}/sent`, { channel: ch, step: idx }); } catch (e) { b.disabled = false; throw e; }
     }
     render();
   }));

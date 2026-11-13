@@ -24,8 +24,8 @@ function trackCells(sent, steps, status, now = new Date(), connectedAt = null, n
     if (i > sent.length) return { state: 'locked' };
     // next step to send
     if (i === 0) return { state: 'due', days: 0 };
-    // LinkedIn follow-up 1 only opens once the connection request was accepted
-    if (needConnect && i === 1 && !connectedAt) return { state: 'locked', awaitingConnect: true };
+    // LinkedIn follow-ups only open once the connection request was accepted
+    if (needConnect && !connectedAt) return { state: 'locked', awaitingConnect: true };
     const base = needConnect && i === 1 ? connectedAt : sent[i - 1];
     const dueDay = new Date(startOfDay(base).getTime() + step.gapDays * DAY);
     const diff = dayDiff(now, dueDay); // >0 overdue, 0 today, <0 in future

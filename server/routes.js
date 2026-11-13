@@ -224,15 +224,22 @@ router.delete('/contacts/:id', wrap(async (req, res) => {
 }));
 
 // mark next step sent
+// `step` = the step the user clicked; the push only lands while exactly that many steps are recorded, so a double click
+// or two requests at once can never record two steps
 router.post('/contacts/:id/sent', wrap(async (req, res) => {
   const { channel, date } = req.body;
   const settings = await getSettings(req.seg.slug);
-  const c = await Contact.findById(req.params.id);
+  const c = await Contact.findById(req.params.id).lean();
+  if (!c) return res.status(404).json({ error: 'Contact nahi mila' });
   const f = trackField(channel);
-  if (c[f].length >= trackSteps(settings, channel).length) return res.status(400).json({ error: 'All steps already sent' });
-  c[f].push(parseDate(date));
-  await c.save();
-  res.json(dec(req, c, settings));
+  const step = Number.isInteger(req.body.step) ? req.body.step : c[f].length;
+  if (step !== c[f].length) return res.status(409).json({ error: 'Ye step pehle hi mark ho chuka hai' });
+  if (step >= trackSteps(settings, channel).length) return res.status(400).json({ error: 'All steps already sent' });
+  // LinkedIn follow-ups can only go to people who accepted the connection request
+  if (channel === 'linkedin' && step > 0 && !c.linkedinConnectedAt) return res.status(400).json({ error: 'Pehle Connected mark karo, bina accept ke follow-up nahi jaata' });
+  const done = await Contact.findOneAndUpdate({ _id: c._id, [f]: { $size: step } }, { $push: { [f]: parseDate(date) } }, { new: true });
+  if (!done) return res.status(409).json({ error: 'Ye step pehle hi mark ho chuka hai' });
+  res.json(dec(req, done, settings));
 }));
 
 // edit date of an already-sent step
@@ -252,6 +259,8 @@ router.delete('/contacts/:id/sent', wrap(async (req, res) => {
   const settings = await getSettings(req.seg.slug);
   const c = await Contact.findById(req.params.id);
   c[trackField(req.query.channel)].pop();
+  // no note sent any more = no accepted connection either (else the next note would open Follow-up 1 straight away)
+  if (req.query.channel === 'linkedin' && !c.linkedinSent.length) c.linkedinConnectedAt = undefined;
   await c.save();
   res.json(dec(req, c, settings));
 }));
